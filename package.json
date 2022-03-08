@@ -7,9 +7,9 @@
     "splairdrop": "./dist/index.js"
   },
   "scripts": {
-    "start": "nodemon --watch 'src/**/*.ts' --exec 'ts-node' src/index.ts",
+    "start": "nodemon --watch",
     "create": "yarn run build && npm run test",
-    "build": "tsc -p .",
+    "build": "tsc",
     "local": "sudo yarn i -g && splairdrop",
     "refresh": "rm -rf ./node_modules ./yarn-lock.json && yarn install"
   },
@@ -23,11 +23,10 @@
   "dependencies": {
     "@solana/spl-token": "^0.2.0",
     "@solana/web3.js": "^1.36.0",
-    "@types/clear": "^0.1.2",
+    "@types/cli-progress": "^3.9.2",
     "@types/figlet": "^1.5.4",
     "@types/node": "^17.0.21",
-    "chalk": "^5.0.0",
-    "clear": "^0.1.0",
+    "chalk": "4.1.2",
     "cli-progress": "^3.10.0",
     "commander": "^9.0.0",
     "figlet": "^1.5.2",

@@ -1,4 +1,5 @@
 import * as spl from '@solana/spl-token';
+import * as cliProgress from 'cli-progress';
 import { clusterApiUrl, sendAndConfirmTransaction, PublicKey, Transaction, SystemProgram, Keypair, Connection, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import * as fs from 'fs';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, transfer } from '@solana/spl-token';
@@ -8,11 +9,18 @@ export async function dropWLToken(whitelistPath: string, transferAmount: number)
     let walletArr: any = [];
     const data = fs.readFileSync(whitelistPath, "utf8");
     jsonData = JSON.parse(data);
-    var connection = new Connection('https://divine-black-leaf.solana-mainnet.quiknode.pro/0a6e0f59227c91b2f1f72953090b46166790529d/');
+    var connection = new Connection('');
+    const progressBar = new cliProgress.SingleBar(
+        {
+          format: 'Progress: [{bar}] {percentage}% | {value}/{total}',
+        },
+        cliProgress.Presets.shades_classic,
+      );
     var secret = Keypair.fromSecretKey(Uint8Array.from(walletArr));
     var fromWallet = secret.publicKey;
     const mint = jsonData.mint as string;
     const addresses = jsonData.wallets as string[];
+    progressBar.start(addresses.length, 0);
     const ownerAta = await spl.getAssociatedTokenAddress(new PublicKey(mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
     let confirmMessages: string[] = [];
     const walletChunks = chunkItems(addresses, 5);

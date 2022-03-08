@@ -1,20 +1,46 @@
 {
   "compilerOptions": {
-   "target": "es5",
+   "target": "es6",
    "lib": [
-     "es2017","es2015","dom","es6"
+     "es2017","es2019","dom","es6"
     ],
    "module": "commonjs",
    "outDir": "./dist",
    "rootDir": "./src",
    "sourceMap": false,
-   "strict": true
+   "strict": true,
+   "esModuleInterop": true
   },
+  "moduleResolution": "node",            /* Specify module resolution strategy: 'node' (Node.js) or 'classic' (TypeScript pre-1.6). */
+  "baseUrl": ".",
+  "paths": {
+    "~/*": ["./src/*"],
+  },
+  "resolveJsonModule": true,
+  // "rootDirs": [],                        /* List of root folders whose combined content represents the structure of the project at runtime. */
+  // "typeRoots": [],                       /* List of folders to include type definitions from. */
+  "typeRoots": ["node_modules/@types", "/types"],
+  // "allowSyntheticDefaultImports": true,  /* Allow default imports from modules with no default export. This does not affect code emit, just typechecking. */
+  // "preserveSymlinks": true,              /* Do not resolve the real path of symlinks. */
+  // "allowUmdGlobalAccess": true,          /* Allow accessing UMD globals from modules. */
+
+  /* Source Map Options */
+  // "sourceRoot": "",                      /* Specify the location where debugger should locate TypeScript files instead of source locations. */
+  // "mapRoot": "",                         /* Specify the location where debugger should locate map files instead of generated locations. */
+  // "inlineSourceMap": true,               /* Emit a single file with source maps instead of having a separate file. */
+  // "inlineSources": true,                 /* Emit the source alongside the sourcemaps within a single file; requires '--inlineSourceMap' or '--sourceMap' to be set. */
+
+  /* Experimental Options */
+  "experimentalDecorators": true,        /* Enables experimental support for ES7 decorators. */
+  // "emitDecoratorMetadata": true,         /* Enables experimental support for emitting type metadata for decorators. */
+
+  /* Advanced Options */
+  "skipLibCheck": true /* Skip type checking of declaration files. */,
+  "forceConsistentCasingInFileNames": true, /* Disallow inconsistently-cased references to the same file. */
   "include": [
-    "**.ts"
+    "./src/**.ts"
    ],
   "exclude": [
-    "node_modules",
-    "firefunctions"
+    "node_modules"
    ]
   }
