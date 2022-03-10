@@ -57,7 +57,7 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
 
 }
 
-export async function transferNft(keypair: Keypair, whitelistPath: string, mintlistPath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false): Promise<any> {
+export async function airdropNft(keypair: Keypair, whitelistPath: string, mintlistPath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     const mintlist = fs.readFileSync(mintlistPath, "utf8");

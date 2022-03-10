@@ -32,7 +32,7 @@ export const chunkItems = <T>(items: T[], chunkSize?: number) =>
         return chunks;
     }, []);
 
-export async function getSnapshot(mintIds: string[]): Promise<HolderAccount[]> {
+export async function getSnapshot(mintIds: string[], rpcUrl: string | null = null): Promise<HolderAccount[]> {
     let accounts: HolderAccount[] = [];
     const mintIdChunks = chunkItems(mintIds);
     for (const chunk of mintIdChunks)
@@ -61,7 +61,8 @@ export async function getSnapshot(mintIds: string[]): Promise<HolderAccount[]> {
                     ]
                 };
                 await timeout(500, 0, false);
-                let response = await axios.post<RpcResponse>('https://pentacle.genesysgo.net/', request);
+                let rpc = rpcUrl ?? 'https://pentacle.genesysgo.net/';
+                let response = await axios.post<RpcResponse>(rpc, request);
                 if (response.status == 200) {
                     const responseData = response.data;
                     let mainAccount = responseData.result.filter(x => x.account.data.parsed.info.tokenAmount.uiAmount > 0)[0];

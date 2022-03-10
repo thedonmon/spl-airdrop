@@ -5,7 +5,7 @@ import log from 'loglevel';
 import * as path from 'path';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropToken } from './spltokenairdrop';
+import { airdropNft, airdropToken } from './spltokenairdrop';
 import { loadWalletKey } from './helpers/utility';
 const CACHE_PATH = './.cache';
 
@@ -44,7 +44,6 @@ programCommand('airdrop-token')
 programCommand('airdrop-nft')
   .argument('-m, --mintIds <path>', 'Mint Ids to Send')
   .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
-  .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseInt, 1)
   .option('-s', '--simulate', 'Simuate airdrop')
   .option(
     '-r, --rpc-url <string>',
@@ -53,7 +52,31 @@ programCommand('airdrop-nft')
   .action(async (_, cmd) => {
     console.log(
       chalk.blue(
-        figlet.textSync('spl token airdrop', { horizontalLayout: 'controlled smushing' })
+        figlet.textSync('nft airdrop', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { keypair, env, mintIds, airdropListPath, simulate, rpcUrl } = cmd.opts();
+    const kp = loadWalletKey(keypair);
+    if (!simulate) {
+      await airdropNft(kp, airdropListPath, mintIds, env, rpcUrl);
+
+    }
+    else {
+      const result = await airdropNft(kp, airdropListPath, mintIds, env, rpcUrl, true);
+      log.log(result);
+    }
+  });
+
+  programCommand('get-holders')
+  .argument('-cm, --candyMachineId <string>', 'Mint Ids to Send')
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (_, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('get holders', { horizontalLayout: 'controlled smushing' })
       )
     );
     const { keypair, env, airdropListPath, amount, simulate, rpcUrl } = cmd.opts();
