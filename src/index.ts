@@ -5,32 +5,70 @@ import log from 'loglevel';
 import * as path from 'path';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
+import { airdropToken } from './spltokenairdrop';
+import { loadWalletKey } from './helpers/utility';
 const CACHE_PATH = './.cache';
 
 program
   .version('0.0.1')
   .description("A CLI to handle SPL-Token and NFT Airdrops");
-// From commander examples
 
 log.setLevel(log.levels.INFO);
 
-
-programCommand('simulate-airdrop')
-  .argument('<mint-tokenId>', 'MintID')
-  .option('-al <path>, --airdroplist', 'path to list of wallets to airdrop')
+programCommand('airdrop-token')
+  .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
+  .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseInt, 1)
+  .option('-s', '--simulate', 'Simuate airdrop')
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .action(async (candyMachineId, _, cmd) => {
+  .action(async (tokenMintId, _, cmd) => {
     console.log(
       chalk.blue(
-        figlet.textSync('simulate airdrop', { horizontalLayout: 'controlled smushing' })
+        figlet.textSync('spl token airdrop', { horizontalLayout: 'controlled smushing' })
       )
     );
-    const { keypair, env, dry, charity, charityPercent, rpcUrl } = cmd.opts();
+    const { keypair, env, airdropListPath, amount, simulate, rpcUrl } = cmd.opts();
+    const kp = loadWalletKey(keypair);
+    if (!simulate) {
+      await airdropToken(kp, airdropListPath, amount, env, rpcUrl);
+
+    }
+    else {
+      const result = await airdropToken(kp, airdropListPath, amount, env, rpcUrl, true);
+      log.log(result);
+    }
   });
 
+programCommand('airdrop-nft')
+  .argument('-m, --mintIds <path>', 'Mint Ids to Send')
+  .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
+  .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseInt, 1)
+  .option('-s', '--simulate', 'Simuate airdrop')
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (_, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('spl token airdrop', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { keypair, env, airdropListPath, amount, simulate, rpcUrl } = cmd.opts();
+    const kp = loadWalletKey(keypair);
+    if (!simulate) {
+      await airdropToken(kp, airdropListPath, amount, env, rpcUrl);
+
+    }
+    else {
+      const result = await airdropToken(kp, airdropListPath, amount, env, rpcUrl, true);
+      log.log(result);
+    }
+  });
+
+// From commander examples
 function myParseInt(value: any) {
   // parseInt takes a string and a radix
   const parsedValue = parseInt(value, 10);
