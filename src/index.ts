@@ -5,8 +5,10 @@ import log from 'loglevel';
 import * as path from 'path';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken } from './spltokenairdrop';
-import { loadWalletKey } from './helpers/utility';
+import { airdropNft, airdropToken, airdropTokenPerNft } from './spltokenairdrop';
+import { getSnapshot, loadWalletKey } from './helpers/utility';
+import { PublicKey } from '@solana/web3.js';
+import { HolderAccount } from './types/holderaccounts';
 const CACHE_PATH = './.cache';
 
 program
@@ -16,7 +18,7 @@ program
 log.setLevel(log.levels.INFO);
 
 programCommand('airdrop-token')
-  .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
+  .option('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
   .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseInt, 1)
   .option('-s', '--simulate', 'Simuate airdrop')
   .option(
@@ -41,8 +43,49 @@ programCommand('airdrop-token')
     }
   });
 
+  programCommand('airdrop-token-per-nft')
+  .argument('<mintIdsPath>', 'Mint Ids of NFTs to Send', val => {
+    return fs.readdirSync(`${val}`, 'utf-8') as string [];
+  })
+  .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseInt, 1)
+  .requiredOption('-m', '--mintid <string>', 'Airdrop token MintID')
+  .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
+  .option('-h, --getholders <boolean>', 'Take snapshot', false)
+  .option('-s', '--simulate', 'Simuate airdrop')
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (tokenMintIds, _, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('spl token airdrop', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { keypair, env, amount, mint, airdropListPath, getHolders, simulate, rpcUrl } = cmd.opts();
+    const kp = loadWalletKey(keypair);
+    const mintPk = new PublicKey(mint);
+    if((getHolders as boolean) == true && simulate) {
+      const holders = await getSnapshot(tokenMintIds, rpcUrl);
+      const result = await airdropTokenPerNft(kp, holders, mintPk, amount, env, rpcUrl, true);
+      log.log(result);
+
+    }
+    if (!simulate && (getHolders as boolean) == true) {
+      const holders = await getSnapshot(tokenMintIds, rpcUrl);
+      await airdropTokenPerNft(kp, holders, mintPk, amount, env, rpcUrl);
+    }
+    else {
+      const holders = fs.readFileSync(airdropListPath, 'utf8');
+      const holderAccts = JSON.parse(holders) as HolderAccount[];
+      const result = await airdropTokenPerNft(kp, holderAccts, mintPk, amount, env, rpcUrl, true);
+      log.log(result);
+    }
+  });
+
+
 programCommand('airdrop-nft')
-  .argument('-m, --mintIds <path>', 'Mint Ids to Send')
+  .argument('-m, --mintIds <path>', 'Mint Ids of NFTs to Send')
   .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
   .option('-s', '--simulate', 'Simuate airdrop')
   .option(
@@ -67,27 +110,30 @@ programCommand('airdrop-nft')
     }
   });
 
-  programCommand('get-holders')
-  .argument('-cm, --candyMachineId <string>', 'Mint Ids to Send')
+  programCommand('get-holders', { requireWallet: false })
+  .option('<mintIds>', 'MintIds path from candy machine', val => {
+    return fs.readdirSync(`${val}`, 'utf-8') as string [];
+  })
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .action(async (_, cmd) => {
+  .action(async (mintIds: string[], cmd) => {
     console.log(
       chalk.blue(
         figlet.textSync('get holders', { horizontalLayout: 'controlled smushing' })
       )
     );
-    const { keypair, env, airdropListPath, amount, simulate, rpcUrl } = cmd.opts();
-    const kp = loadWalletKey(keypair);
-    if (!simulate) {
-      await airdropToken(kp, airdropListPath, amount, env, rpcUrl);
-
-    }
+    const { rpcUrl } = cmd.opts();
+    if(mintIds.length > 0){
+     const result = await getSnapshot(mintIds, rpcUrl);
+     var jsonObjs = JSON.stringify(result);
+     fs.writeFileSync('holders.json', jsonObjs);
+     log.log('Holders written to holders.json');
+     log.log(result);
+    } 
     else {
-      const result = await airdropToken(kp, airdropListPath, amount, env, rpcUrl, true);
-      log.log(result);
+      log.log('Please check file is in correct format');
     }
   });
 

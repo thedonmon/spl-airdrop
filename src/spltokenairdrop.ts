@@ -6,6 +6,7 @@ import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, transfer } from '@solana
 import { chunkItems, getConnection, promiseRetry } from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
 import { MarketPlaces } from './helpers/constants';
+import { HolderAccount } from './types/holderaccounts';
 
 export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false): Promise<any> {
     let jsonData: any = {};
@@ -56,8 +57,55 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
             }
         });
     }
-
 }
+
+export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false): Promise<any> {
+    var connection = getConnection(cluster, rpcUrl);    
+    const fromWallet = keypair.publicKey;
+    let holders = holdersList;
+    holders =  filterMarketPlacesByHolders(holdersList);
+    if(simulate) {
+        return holders.map(x => ({  wallet: x, transferAmt: (transferAmount * x.mintIds.length) }));
+    }
+
+    const progressBar = new cliProgress.SingleBar(
+        {
+            format: 'Progress: [{bar}] {percentage}% | {value}/{total}',
+        },
+        cliProgress.Presets.shades_classic,
+    );
+
+    progressBar.start(holdersList.length, 0);
+    const ownerAta = await spl.getAssociatedTokenAddress(tokenMint, new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
+    const walletChunks = chunkItems(holdersList, 5);
+    const stream = fs.createWriteStream("tokentransfersnft.txt", { flags: 'a' });
+    for (let walletChunk of walletChunks) {
+        progressBar.increment(walletChunk.length);
+        walletChunk.map(async (toWallet, index) => {
+            try {
+                const totalTransferAmt = transferAmount * toWallet.mintIds.length;
+                const toWalletPk = new PublicKey(toWallet.walletId);
+                const mintPk = tokenMint;;
+                const walletAta = await promiseRetry(() => spl.getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+                console.log(toWallet, walletAta.amount, index);
+                if (walletAta.amount < transferAmount) {
+                    const txnIns = spl.createTransferInstruction(ownerAta, walletAta.address, fromWallet, totalTransferAmt, [keypair], TOKEN_PROGRAM_ID);
+                    const txn = new Transaction().add(txnIns);
+                    const signature = await connection.sendTransaction(txn, [keypair], { skipPreflight: true, maxRetries: 50 });
+                    await connection.confirmTransaction(signature, 'finalized');
+                    let message = `Sent ${transferAmount} of ${tokenMint.toBase58()} to ${toWallet}. Signature ${signature}. \n`;
+                    stream.write(message);
+                }
+            }
+            catch (err) {
+                const message = `ERROR: Sending ${transferAmount} of ${tokenMint.toBase58()} to ${toWallet} failed. \n`;
+                stream.write(message);
+                console.error(err, message);
+            }
+        });
+    }
+}
+
 
 export async function airdropNft(keypair: Keypair, whitelistPath: string, mintlistPath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false): Promise<any> {
     let jsonData: any = {};
@@ -115,6 +163,10 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
 
 function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
     return transfers.filter(x => (x.wallet !== MarketPlaces.MagicEden && x.wallet !== MarketPlaces.AlphaArt && x.wallet !== MarketPlaces.DigitalEyes && x.wallet !== MarketPlaces.ExchangeArt && x.wallet !== MarketPlaces.Solanart));
+}
+
+function filterMarketPlacesByHolders(transfers: HolderAccount[]): HolderAccount[] {
+    return transfers.filter(x => (x.walletId !== MarketPlaces.MagicEden && x.walletId !== MarketPlaces.AlphaArt && x.walletId !== MarketPlaces.DigitalEyes && x.walletId !== MarketPlaces.ExchangeArt && x.walletId !== MarketPlaces.Solanart));
 }
 
 function filterMarketPlacesByWallet(wallets: string[]): string[] {
