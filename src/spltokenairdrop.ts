@@ -5,6 +5,7 @@ import * as fs from 'fs';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, transfer } from '@solana/spl-token';
 import { chunkItems, getConnection, promiseRetry } from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
+import { MarketPlaces } from './helpers/constants';
 
 export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false): Promise<any> {
     let jsonData: any = {};
@@ -14,7 +15,8 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
     
     const fromWallet = keypair.publicKey;
     const mint = jsonData.mint as string;
-    const addresses = jsonData.wallets as string[];
+    let addresses = jsonData.wallets as string[];
+    addresses =  filterMarketPlacesByWallet(addresses);
     if(simulate) {
         return addresses.map(x => ({  wallet: x, transferAmt: transferAmount }));
     }
@@ -80,6 +82,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
         const mintsObj = mintsToTransfer.map(x => new MintTransfer(distro.wallet, x));
         mintsTransferList.concat(mintsObj);
     }
+    mintsTransferList = filterMarketPlaces(mintsTransferList);
     if(simulate) {
         stream.close();
         return mintsTransferList;
@@ -108,4 +111,12 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
         });
     
     }
+}
+
+function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
+    return transfers.filter(x => (x.wallet !== MarketPlaces.MagicEden && x.wallet !== MarketPlaces.AlphaArt && x.wallet !== MarketPlaces.DigitalEyes && x.wallet !== MarketPlaces.ExchangeArt && x.wallet !== MarketPlaces.Solanart));
+}
+
+function filterMarketPlacesByWallet(wallets: string[]): string[] {
+    return wallets.filter(x => (x !== MarketPlaces.MagicEden && x !== MarketPlaces.AlphaArt && x !== MarketPlaces.DigitalEyes && x !== MarketPlaces.ExchangeArt && x !== MarketPlaces.Solanart));
 }
