@@ -111,20 +111,21 @@ programCommand('airdrop-nft')
   });
 
   programCommand('get-holders', { requireWallet: false })
-  .option('<mintIds>', 'MintIds path from candy machine', val => {
-    return fs.readdirSync(`${val}`, 'utf-8') as string [];
+  .argument('<mintIds>', 'MintIds path from candy machine', val => {
+    return JSON.parse(fs.readFileSync(`${val}`, 'utf-8'));
   })
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .action(async (mintIds: string[], cmd) => {
+  .action(async (mintIds: string[], options, cmd) => {
+    console.log(cmd);
     console.log(
       chalk.blue(
         figlet.textSync('get holders', { horizontalLayout: 'controlled smushing' })
       )
     );
-    const { rpcUrl } = cmd.opts();
+    const { env, rpcUrl } = cmd.opts();
     if(mintIds.length > 0){
      const result = await getSnapshot(mintIds, rpcUrl);
      var jsonObjs = JSON.stringify(result);
