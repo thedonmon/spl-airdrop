@@ -1,5 +1,7 @@
 import * as spl from '@solana/spl-token';
 import * as cliProgress from 'cli-progress';
+import log from 'loglevel';
+import chalk from 'chalk';
 import { clusterApiUrl, PublicKey, Transaction, Keypair, Connection, Cluster } from '@solana/web3.js';
 import * as fs from 'fs';
 import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, transfer } from '@solana/spl-token';
@@ -13,13 +15,13 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
     const data = fs.readFileSync(whitelistPath, "utf8");
     jsonData = JSON.parse(data);
     var connection = getConnection(cluster, rpcUrl);
-    
+
     const fromWallet = keypair.publicKey;
     const mint = jsonData.mint as string;
     let addresses = jsonData.wallets as string[];
-    addresses =  filterMarketPlacesByWallet(addresses);
-    if(simulate) {
-        return addresses.map(x => ({  wallet: x, transferAmt: transferAmount }));
+    addresses = filterMarketPlacesByWallet(addresses);
+    if (simulate) {
+        return addresses.map(x => ({ wallet: x, transferAmt: transferAmount }));
     }
 
     const progressBar = new cliProgress.SingleBar(
@@ -33,10 +35,12 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
     const ownerAta = await spl.getAssociatedTokenAddress(new PublicKey(mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
     const walletChunks = chunkItems(addresses, 5);
     const stream = fs.createWriteStream("tokentransfers.txt", { flags: 'a' });
+    const failStream = fs.createWriteStream("tokentransfersnft-errors.txt", { flags: 'a' });
+
     for (let walletChunk of walletChunks) {
-        progressBar.increment(walletChunk.length);
         walletChunk.map(async (toWallet, index) => {
             try {
+                progressBar.increment();
                 const toWalletPk = new PublicKey(toWallet);
                 const mintPk = new PublicKey(mint);
                 const walletAta = await promiseRetry(() => spl.getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
@@ -47,25 +51,30 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
                     const signature = await connection.sendTransaction(txn, [keypair], { skipPreflight: true, maxRetries: 50 });
                     await connection.confirmTransaction(signature, 'finalized');
                     let message = `Sent ${transferAmount} of ${mint} to ${toWallet}. Signature ${signature}. \n`;
+                    log.info(chalk.green(message));
                     stream.write(message);
                 }
             }
             catch (err) {
                 const message = `ERROR: Sending ${transferAmount} of ${mint} to ${toWallet} failed. \n`;
-                stream.write(message);
+                log.error(chalk.red(message));
+                const json = JSON.stringify({ tokenTransferAmount: transferAmount, holder: toWallet });
+                failStream.write(json);
                 console.error(err, message);
             }
         });
     }
+    stream.close();
+    failStream.close();
 }
 
 export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false): Promise<any> {
-    var connection = getConnection(cluster, rpcUrl);    
+    var connection = getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     let holders = holdersList;
-    holders =  filterMarketPlacesByHolders(holdersList);
-    if(simulate) {
-        return holders.map(x => ({  wallet: x, transferAmt: (transferAmount * x.mintIds.length) }));
+    holders = filterMarketPlacesByHolders(holdersList);
+    if (simulate) {
+        return holders.map(x => ({ wallet: x, transferAmt: (transferAmount * x.mintIds.length) }));
     }
 
     const progressBar = new cliProgress.SingleBar(
@@ -79,11 +88,13 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
     const ownerAta = await spl.getAssociatedTokenAddress(tokenMint, new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
     const walletChunks = chunkItems(holdersList, 5);
     const stream = fs.createWriteStream("tokentransfersnft.txt", { flags: 'a' });
+    const failStream = fs.createWriteStream("tokentransfersnft-errors.txt", { flags: 'a' });
+
     for (let walletChunk of walletChunks) {
-        progressBar.increment(walletChunk.length);
         walletChunk.map(async (toWallet, index) => {
+            progressBar.increment();
+            const totalTransferAmt = transferAmount * toWallet.mintIds.length;
             try {
-                const totalTransferAmt = transferAmount * toWallet.mintIds.length;
                 const toWalletPk = new PublicKey(toWallet.walletId);
                 const mintPk = tokenMint;;
                 const walletAta = await promiseRetry(() => spl.getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
@@ -94,16 +105,21 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
                     const signature = await connection.sendTransaction(txn, [keypair], { skipPreflight: true, maxRetries: 50 });
                     await connection.confirmTransaction(signature, 'finalized');
                     let message = `Sent ${transferAmount} of ${tokenMint.toBase58()} to ${toWallet}. Signature ${signature}. \n`;
+                    log.info(chalk.green(message));
                     stream.write(message);
                 }
             }
             catch (err) {
                 const message = `ERROR: Sending ${transferAmount} of ${tokenMint.toBase58()} to ${toWallet} failed. \n`;
-                stream.write(message);
+                const json = JSON.stringify({ tokenTransferAmoint: totalTransferAmt, holder: toWallet });
+                log.error(chalk.red(message));
+                failStream.write(json);
                 console.error(err, message);
             }
         });
     }
+    stream.close();
+    failStream.close();
 }
 
 
@@ -124,6 +140,8 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
     );
     progressBar.start(distributionList.length, 0);
     const stream = fs.createWriteStream("nfttransfer.txt", { flags: 'a' });
+    const failStream = fs.createWriteStream("nfttransfer-errors.txt", { flags: 'a' });
+
     let mintsTransferList: MintTransfer[] = [];
     for (let distro of distributionList) {
         const mintsToTransfer = mintListArr.splice(0, distro.nFtsToAirdrop);
@@ -131,15 +149,16 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
         mintsTransferList.concat(mintsObj);
     }
     mintsTransferList = filterMarketPlaces(mintsTransferList);
-    if(simulate) {
+    if (simulate) {
         stream.close();
+        failStream.close();
         return mintsTransferList;
     }
     const mintTransferChunks = chunkItems(mintsTransferList, 5);
     for (let mintTransferChunk of mintTransferChunks) {
-        progressBar.increment(mintTransferChunk.length);
         mintTransferChunk.map(async (mint, index) => {
             try {
+                progressBar.increment();
                 const ownerAta = await spl.getAssociatedTokenAddress(new PublicKey(mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
                 const toWalletPk = new PublicKey(mint.mintId);
                 const mintPk = new PublicKey(mint);
@@ -148,17 +167,22 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
                 const txn = new Transaction().add(txnIns);
                 const signature = await connection.sendTransaction(txn, [keypair], { skipPreflight: true, maxRetries: 50 });
                 await connection.confirmTransaction(signature, 'finalized');
-                let message = `Sent NFT ${mint} to ${mint.wallet}. Signature ${signature}. \n`;
+                let message = `Sent NFT ${mint.mintId} to ${mint.wallet}. Signature ${signature}. \n`;
+                log.info(chalk.green(message));
                 stream.write(message);
             }
             catch (err: any) {
-                const message = `ERROR: Failed to send NFT ${mint} to ${mint.wallet}. \n`;
-                stream.write(message);
+                const message = `ERROR: Failed to send NFT ${mint.mintId} to ${mint.wallet}. \n`;
+                log.error(chalk.red(message));
+                const json = JSON.stringify(mint);
                 console.error(err, message);
+                failStream.write(json);
             }
         });
-    
+
     }
+    stream.close();
+    failStream.close();
 }
 
 function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
