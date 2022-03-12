@@ -9,6 +9,8 @@ import { airdropNft, airdropToken, airdropTokenPerNft } from './spltokenairdrop'
 import { getSnapshot, loadWalletKey } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
+import { getCandyMachineMints } from './helpers/metaplexmint';
+
 const CACHE_PATH = './.cache';
 
 program
@@ -138,6 +140,35 @@ programCommand('airdrop-nft')
     }
   });
 
+  programCommand('get-holders-cm', { requireWallet: false })
+  .argument('<verifiedCreatorId>', 'Verified Creator Id')
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (verifiedCreatorId: string, options, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('get holders', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { env, rpcUrl } = cmd.opts();
+    if(verifiedCreatorId) {
+     const mintIds = await getCandyMachineMints(verifiedCreatorId, env, rpcUrl);
+     if(mintIds) {
+      const jsonMints = JSON.stringify(mintIds);
+      fs.writeFileSync(`${verifiedCreatorId}-mints.json`, jsonMints);
+     }
+     const result = await getSnapshot(mintIds, rpcUrl);
+     const jsonObjs = JSON.stringify(result);
+     fs.writeFileSync('holdersList.json', jsonObjs);
+     log.log('Holders written to holders.json');
+     log.log(result);
+    } 
+    else {
+      log.log('Please check file is in correct format');
+    }
+  });
 // From commander examples
 function myParseInt(value: any) {
   // parseInt takes a string and a radix
