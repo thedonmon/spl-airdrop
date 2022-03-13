@@ -26,12 +26,13 @@ programCommand('airdrop-token')
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .action(async (tokenMintId, _, cmd) => {
+  .action(async (_, cmd) => {
     console.log(
       chalk.blue(
         figlet.textSync('spl token airdrop', { horizontalLayout: 'controlled smushing' })
       )
     );
+    clearLogFiles();
     const { keypair, env, airdropListPath, amount, simulate, rpcUrl } = cmd.opts();
     const kp = loadWalletKey(keypair);
     if (!simulate) {
@@ -47,9 +48,11 @@ programCommand('airdrop-token')
 programCommand('airdrop-token-per-nft')
   .argument('<mintid>', 'Airdrop token MintID')
   .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseInt, 1)
-  .requiredOption('-m', '--mintid <string>', 'Airdrop token MintID')
+  .requiredOption('-d, --decimals', 'Decimals of the SPL token', myParseInt, 0)
+  .requiredOption('-m, --mintid <string>', 'Airdrop token MintID')
   .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
   .option('-h, --getholders <boolean>', 'Take snapshot', false)
+  .option('-cm, --verifiedcreator <string>', 'Verified creator address')
   .option('-s, --simulate', 'Simuate airdrop')
   .option(
     '-r, --rpc-url <string>',
@@ -60,20 +63,27 @@ programCommand('airdrop-token-per-nft')
       chalk.blue(
         figlet.textSync('token per nft airdrop', { horizontalLayout: 'controlled smushing' })
       )
-    ); 
-    const { keypair, env, amount, airdroplist, getHolders, simulate, rpcUrl } = cmd.opts();
-    console.log(keypair, env, amount, mintid, airdroplist, rpcUrl);
+    );
+    clearLogFiles();
+    const { keypair, env, amount, decimals, airdroplist, getHolders, verifiedcreator, simulate, rpcUrl } = cmd.opts();
+    let holderAccounts: HolderAccount[] = [];
     const kp = loadWalletKey(keypair);
     const mintPk = new PublicKey(mintid);
-    const holders = fs.readFileSync(airdroplist, 'utf8');
-    const holderAccts = JSON.parse(holders) as HolderAccount[];
-    const result = await airdropTokenPerNft(kp, holderAccts, mintPk, amount, env, rpcUrl, simulate);
+    if(getHolders) {
+      const mints = await getCandyMachineMints(verifiedcreator, env, rpcUrl);
+      holderAccounts = await getSnapshot(mints, rpcUrl);
+    }
+    else {
+      const holders = fs.readFileSync(airdroplist, 'utf8');
+      holderAccounts = JSON.parse(holders) as HolderAccount[];
+    }
+    const result = await airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate);
     log.log(result);
   });
 
 
 programCommand('airdrop-nft')
-  .argument('-m, --mintIds <path>', 'Mint Ids of NFTs to Send')
+  .requiredOption('-m, --mintIds <path>', 'Mint Ids of NFTs to Send')
   .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
   .option('-s, --simulate <boolean>', 'Simuate airdrop')
   .option(
@@ -87,6 +97,7 @@ programCommand('airdrop-nft')
         figlet.textSync('nft airdrop', { horizontalLayout: 'controlled smushing' })
       )
     );
+    clearLogFiles();
     const { keypair, env, mintIds, airdropListPath, simulate, rpcUrl, batchSize } = cmd.opts();
     const kp = loadWalletKey(keypair);
     if (!simulate) {
@@ -140,21 +151,18 @@ programCommand('get-holders-cm', { requireWallet: false })
       )
     );
     const { env, rpcUrl } = cmd.opts();
-    if (verifiedCreatorId) {
-      const mintIds = await getCandyMachineMints(verifiedCreatorId, env, rpcUrl);
-      if (mintIds) {
-        const jsonMints = JSON.stringify(mintIds);
-        fs.writeFileSync(`${verifiedCreatorId}-mints.json`, jsonMints);
-      }
-      const result = await getSnapshot(mintIds, rpcUrl);
-      const jsonObjs = JSON.stringify(result);
-      fs.writeFileSync('holdersList.json', jsonObjs);
-      log.log('Holders written to holders.json');
-      log.log(result);
+
+    const mintIds = await getCandyMachineMints(verifiedCreatorId, env, rpcUrl);
+    if (mintIds) {
+      const jsonMints = JSON.stringify(mintIds);
+      fs.writeFileSync(`${verifiedCreatorId}-mints.json`, jsonMints);
     }
-    else {
-      log.log('Please check file is in correct format');
-    }
+    const result = await getSnapshot(mintIds, rpcUrl);
+    const jsonObjs = JSON.stringify(result);
+    fs.writeFileSync('holdersList.json', jsonObjs);
+    log.log('Holders written to holders.json');
+    log.log(result);
+
   });
 // From commander examples
 function myParseInt(value: any) {
@@ -201,4 +209,13 @@ function setLogLevel(value: any, prev: any) {
   log.info('setting the log value to: ' + value);
   log.setLevel(value);
 }
+
+function clearLogFiles() {
+  fs.writeFileSync('transfernft.txt', '');
+  fs.writeFileSync('transfernft-errors.txt', '');
+  fs.writeFileSync('tokentransfer.txt', '');
+  fs.writeFileSync('tokentransfer-errors.txt', '');
+  fs.writeFileSync('transfererror.json', '');
+}
+
 program.parse(process.argv);

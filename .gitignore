@@ -39,5 +39,9 @@ dist/**/*
 
 # ignore yarn.lock
 yarn.lock
+
+#ignore misc
 holder*.json
 *-mints.json
+*transfer*.txt
+*transfer*.json

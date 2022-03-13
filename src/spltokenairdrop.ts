@@ -167,7 +167,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
                     error: err
                 };
                 log.error(chalk.red(message));
-                fs.appendFileSync('tokentransfersnft-errors.txt', message);
+                fs.appendFileSync('tansfers-nft-errors.txt', message);
                 const errorString = fs.readFileSync('transfererror.json', 'utf-8');
                 const jsonErrors = JSON.parse(errorString) as TransferError[];
                 jsonErrors.push(errorMsg);
@@ -189,7 +189,7 @@ async function tryTransfer(toWallet: HolderAccount, tokenMint: PublicKey, connec
     await connection.confirmTransaction(signature, 'finalized');
     let message = `Sent ${totalTransferAmt} of ${tokenMint.toBase58()} to ${toWallet.walletId}. Signature ${signature}. \n`;
     log.info(chalk.green(message));
-    fs.appendFileSync('tokentransfersnft.txt', message);
+    fs.appendFileSync('tokentransfers.txt', message);
 
 }
 
@@ -267,7 +267,6 @@ function getLamports(decimal: number): number {
 async function filterRecentTransactions(pk: PublicKey, filterAddress: string, connection: Connection): Promise<(string | undefined)[]> {
     const txns = await connection.getConfirmedSignaturesForAddress2(pk, { limit: 1000 }, 'finalized');
     const txnsParsed = await connection.getParsedTransactions(txns.map(x => x.signature));
-    console.log(txns.length);
     const txnsP = txnsParsed.filter(x => x?.transaction.message.accountKeys!.filter(s => s.pubkey.toBase58() == filterAddress));
     const filteredFound = txnsP.flatMap(x => x?.transaction.message.accountKeys.flatMap(k => k.pubkey.toBase58())).filter(s => s == filterAddress);
     return filteredFound;
