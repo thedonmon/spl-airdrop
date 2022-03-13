@@ -23,6 +23,7 @@
   "dependencies": {
     "@solana/spl-token": "^0.2.0",
     "@solana/web3.js": "^1.36.0",
+    "@strata-foundation/spl-utils": "^3.3.2",
     "@types/cli-progress": "^3.9.2",
     "@types/figlet": "^1.5.4",
     "@types/node": "^17.0.21",
