@@ -5,6 +5,7 @@ import axios from 'axios';
 import { Cluster, clusterApiUrl, Connection, Keypair } from '@solana/web3.js';
 import * as fs from 'fs';
 import log from 'loglevel';
+import { sendAndConfirmWithRetry } from '@strata-foundation/spl-utils';
 
 export async function promiseRetry<T>(fn: () => Promise<T>, retries = 5, err?: any): Promise<T> {
     console.log('trying transaction');
@@ -107,4 +108,9 @@ export function loadWalletKey(keypair: string): Keypair {
 export function getConnection(cluster: string, rpcUrl: string | null): Connection {
     const connection = rpcUrl != null ? new Connection(rpcUrl, { confirmTransactionInitialTimeout: 120000 }) : new Connection(clusterApiUrl(cluster as Cluster), { confirmTransactionInitialTimeout: 120000 });
     return connection;
+}
+
+export async function sendRawTransactionWithRetry(connection: Connection, txn: Buffer): Promise<string> {
+   const result = await sendAndConfirmWithRetry(connection, txn, {skipPreflight: true, maxRetries: 100}, 'finalized', 120000);
+   return result.txid;
 }

@@ -86,7 +86,11 @@ npx ts-node src/index.ts airdrop-token <TokenMintId> \
 
 Want to contribute? Great!
 
-Please fork and create a PR for me to review.
+Thank you for your interest in contributing to this tool! All contributions are welcome no matter how big or small. This includes (but is not limited to) filing issues, adding documentation, fixing bugs, creating examples, and implementing features.
+
+If you'd like to contribute, please claim an issue by commenting, forking, and opening a pull request, even if empty. This allows the maintainers to track who is working on what issue as to not overlap work.
+
+For simple documentation changes, feel free to just open a pull request.
 
 Raise an issue with any bugs.
 
