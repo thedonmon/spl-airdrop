@@ -1,10 +1,9 @@
-import * as spl from '@solana/spl-token';
+import spl, { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import * as cliProgress from 'cli-progress';
 import log from 'loglevel';
 import chalk from 'chalk';
 import { clusterApiUrl, PublicKey, Transaction, Keypair, Connection, Cluster, LAMPORTS_PER_SOL, ParsedAccountData } from '@solana/web3.js';
 import * as fs from 'fs';
-import { ASSOCIATED_TOKEN_PROGRAM_ID, TOKEN_PROGRAM_ID, transfer } from '@solana/spl-token';
 import { chunkItems, getConnection, promiseRetry, timeout } from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
 import { MarketPlaces } from './helpers/constants';

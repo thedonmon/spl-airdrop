@@ -5,7 +5,12 @@ import axios from 'axios';
 import { Cluster, clusterApiUrl, Connection, Keypair } from '@solana/web3.js';
 import * as fs from 'fs';
 import log from 'loglevel';
-import { sendAndConfirmWithRetry } from '@strata-foundation/spl-utils';
+import { sendAndConfirmWithRetry } from './transaction-helper';
+
+
+export function sleep(ms: number): Promise<any> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 export async function promiseRetry<T>(fn: () => Promise<T>, retries = 5, err?: any): Promise<T> {
     console.log('trying transaction');
