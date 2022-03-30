@@ -13,6 +13,7 @@ If you enjoy using this tool send the creator a tip!
 - Airdrop SPL-tokens based on holdings
 - Get snapshot
 - Get hash list
+- Retry errors for both types of transfers in one command.
 
 ## Installation
 
@@ -35,12 +36,12 @@ The airdrop tool is quite resource intensive on the solana RPC so using a custom
 #### Airdrop NFTs
 
 Use this tool to airdrop a specific set of NFTs to holders. You can
-Airdrop expects a list of mintids, and then a list of wallets to airdrop the nfts to. You can use the `get-holders-cm` command to get the hashlist. 
-The file format to pass as _path to airdrop list_ can be found in `examples/nftdistrolist.json`. This is the only format that will be accepted. 
+Airdrop expects a list of mintids, and then a list of wallets to airdrop the nfts to. You can use the `get-holders-cm` command to get the hashlist. This will generate a hashlist for you. 
+The file format to pass as _path to airdrop list_ can be found in `examples/nftdistrolist.json`. This is the only format that will be accepted. Use this file to add the wallet and how many NFTs from the hashlist generated they should receive.
 
 
 ```sh
-npx ts-node src/index.ts airdrop-nft
+npx ts-node src/index.ts airdrop-nft \
     -m <path to mint ids> \
     -al <path to airdrop list> \
     -e mainnet-beta \
@@ -76,11 +77,26 @@ npx ts-node src/index.ts airdrop-token <TokenMintId> \
     -r  <rpc url>
 ```
 
+#### Retry Errors
+
+Use this command to retry any failed transfers.
+For each command above, all errors are formatted and appended to a `transfererrors.json` file. If anything from these fail, another file `rety-transfer-errors.json` is generated. Files can be found in the `logs/` folder. If no path is specified, defaults to the `transfererror.json` file. All logs will be cleaned up per command execution. When you run a retry command however, the transfererror file and retryerrorfiles are not overwritten. It is highly recommended you copy these files to a different location manually and pass the path as an argument, esepcially running this command multiple times. That way each retry-error and transfererror file will be unique to that command session.
+
+```sh
+npx ts-node src/index.ts retry-errors \
+    -ep <error-file path> \ 
+    -e mainnet-beta \
+    -k ~/.config/solana/key.json \
+    -b 100 \
+    -r  <rpc url>
+```
+
+
 ## Upcoming features
-- Ability to retry the errors file. 
-- Get token info
-- Get holders of an spl-token
-- UI to make this tool user friendly
+- [x] Ability to retry the errors file. 
+- [ ] Get token info
+- [ ] Get holders of an spl-token
+- [ ] UI to make this tool user friendly
 
 ## Development
 
