@@ -4,11 +4,13 @@ import * as figlet from 'figlet';
 import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft } from './spltokenairdrop';
+import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors } from './spltokenairdrop';
 import { getSnapshot, loadWalletKey } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
+import path from 'path';
+import { LogFiles } from './helpers/constants';
 
 const CACHE_PATH = './.cache';
 
@@ -32,6 +34,7 @@ programCommand('airdrop-token')
         figlet.textSync('spl token airdrop', { horizontalLayout: 'controlled smushing' })
       )
     );
+    let start = now();
     clearLogFiles();
     const { keypair, env, airdropListPath, amount, simulate, rpcUrl } = cmd.opts();
     const kp = loadWalletKey(keypair);
@@ -43,6 +46,7 @@ programCommand('airdrop-token')
       const result = await airdropToken(kp, airdropListPath, amount, env, rpcUrl, true);
       log.log(result);
     }
+    elapsed(start, true); 
   });
 
 programCommand('airdrop-token-per-nft')
@@ -64,6 +68,7 @@ programCommand('airdrop-token-per-nft')
         figlet.textSync('token per nft airdrop', { horizontalLayout: 'controlled smushing' })
       )
     );
+    let start = now();
     clearLogFiles();
     const { keypair, env, amount, decimals, airdroplist, getHolders, verifiedcreator, simulate, rpcUrl } = cmd.opts();
     let holderAccounts: HolderAccount[] = [];
@@ -79,6 +84,7 @@ programCommand('airdrop-token-per-nft')
     }
     const result = await airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate);
     log.log(result);
+    elapsed(start, true); 
   });
 
 
@@ -97,18 +103,55 @@ programCommand('airdrop-nft')
         figlet.textSync('nft airdrop', { horizontalLayout: 'controlled smushing' })
       )
     );
+    let start = now();
     clearLogFiles();
-    const { keypair, env, mintIds, airdropListPath, simulate, rpcUrl, batchSize } = cmd.opts();
+    const { keypair, env, mintIds, airdroplist, simulate, rpcUrl, batchSize } = cmd.opts();
     const kp = loadWalletKey(keypair);
     if (!simulate) {
-      await airdropNft(kp, airdropListPath, mintIds, env, rpcUrl, false, batchSize as number);
+      await airdropNft(kp, airdroplist, mintIds, env, rpcUrl, false, batchSize as number);
 
     }
     else {
-      const result = await airdropNft(kp, airdropListPath, mintIds, env, rpcUrl, true, batchSize as number);
+      const result = await airdropNft(kp, airdroplist, mintIds, env, rpcUrl, true, batchSize as number);
       log.log(result);
     }
+    elapsed(start, true); 
   });
+
+  programCommand('retry-errors')
+  .option('-ep, --errorsPath <path>', 'Path to errors JSON file. Will default to errors file path if found')
+  .option('-s, --simulate <boolean>', 'Simuate airdrop')
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .option('-b, --batch-size <number>', 'Ammount to batch transactions', '5')
+  .action(async (_, cmd) => {
+    console.log(
+      chalk.red(
+        figlet.textSync('retry errors', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    let start = now();
+    clearLogFiles(true);
+    const { keypair, env, errorsPath, simulate, rpcUrl, batchSize } = cmd.opts();
+    const kp = loadWalletKey(keypair);
+    let defaultErrorsPath = 'transfererror.json';
+    if(errorsPath) {
+      defaultErrorsPath = errorsPath;
+    }
+    if (!simulate) {
+      
+      await retryErrors(kp, defaultErrorsPath, env, rpcUrl, false, batchSize as number);
+
+    }
+    else {
+      const result = await retryErrors(kp, defaultErrorsPath, env, rpcUrl, true, batchSize as number);
+      log.log(result);
+    }
+    elapsed(start, true); 
+  });
+
 
 programCommand('get-holders', { requireWallet: false })
   .argument('<mintIds>', 'MintIds path from candy machine', val => {
@@ -126,6 +169,7 @@ programCommand('get-holders', { requireWallet: false })
       )
     );
     const { env, rpcUrl } = cmd.opts();
+    let start = now();
     if (mintIds.length > 0) {
       const result = await getSnapshot(mintIds, rpcUrl);
       var jsonObjs = JSON.stringify(result);
@@ -136,6 +180,7 @@ programCommand('get-holders', { requireWallet: false })
     else {
       log.log('Please check file is in correct format');
     }
+    elapsed(start, true); 
   });
 
 programCommand('get-holders-cm', { requireWallet: false })
@@ -151,7 +196,7 @@ programCommand('get-holders-cm', { requireWallet: false })
       )
     );
     const { env, rpcUrl } = cmd.opts();
-
+    let start = now();
     const mintIds = await getCandyMachineMints(verifiedCreatorId, env, rpcUrl);
     if (mintIds) {
       const jsonMints = JSON.stringify(mintIds);
@@ -162,7 +207,7 @@ programCommand('get-holders-cm', { requireWallet: false })
     fs.writeFileSync('holdersList.json', jsonObjs);
     log.log('Holders written to holders.json');
     log.log(result);
-
+    elapsed(start, true); 
   });
 // From commander examples
 function myParseInt(value: any) {
@@ -210,12 +255,35 @@ function setLogLevel(value: any, prev: any) {
   log.setLevel(value);
 }
 
-function clearLogFiles() {
-  fs.writeFileSync('transfernft.txt', '');
-  fs.writeFileSync('transfernft-errors.txt', '');
-  fs.writeFileSync('tokentransfer.txt', '');
-  fs.writeFileSync('tokentransfer-errors.txt', '');
-  fs.writeFileSync('transfererror.json', '');
+function clearLogFiles(isRetry: boolean = false) {
+  fs.writeFileSync(LogFiles.TransferNftTxt, '');
+  fs.writeFileSync(LogFiles.TransferNftErrorsTxt, '');
+  fs.writeFileSync(LogFiles.TokenTransferTxt, '');
+  fs.writeFileSync(LogFiles.TokenTransferErrorsTxt, '');
+  fs.writeFileSync(LogFiles.TokenTransferNftTxt, '');
+  fs.writeFileSync(LogFiles.TokenTransferNftErrorsTxt, '');
+  fs.writeFileSync(LogFiles.RetryTransferErrorTxt, '');
+  if(!isRetry) {
+    fs.writeFileSync(LogFiles.TransferErrorJson, JSON.stringify([]));
+    fs.writeFileSync(LogFiles.RetryTransferErrorJson, JSON.stringify([]));
+  }
+}
+
+function now(eventName = null) {
+  if (eventName) {
+    console.log(`Started ${eventName}..`);
+  }
+  return new Date().getTime();
+}
+
+// Returns time elapsed since `beginning`
+// (and, optionally, prints the duration in seconds)
+function elapsed(beginning: number, log = false) {
+  const duration = new Date().getTime() - beginning;
+  if (log) {
+      console.log(`${duration/1000}s`);
+  }
+  return duration;
 }
 
 program.parse(process.argv);

@@ -9,7 +9,6 @@ lib-cov
 *.swp
 
 pids
-logs
 results
 tmp
 
@@ -45,3 +44,4 @@ holder*.json
 *-mints.json
 *transfer*.txt
 *transfer*.json
+*.txt
