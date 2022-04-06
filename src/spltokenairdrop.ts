@@ -1,25 +1,28 @@
-import { ASSOCIATED_TOKEN_PROGRAM_ID, 
-    TOKEN_PROGRAM_ID, 
-    getAssociatedTokenAddress, 
-    getAccount, 
+import {
+    ASSOCIATED_TOKEN_PROGRAM_ID,
+    TOKEN_PROGRAM_ID,
+    getAssociatedTokenAddress,
+    getAccount,
     getOrCreateAssociatedTokenAccount,
     createTransferInstruction,
-    createCloseAccountInstruction
- } from '@solana/spl-token';
+    createCloseAccountInstruction,
+    mintTo,
+    getMint
+} from '@solana/spl-token';
 import * as cliProgress from 'cli-progress';
-import _ from 'lodash';
+import _, { split } from 'lodash';
 import log from 'loglevel';
 import chalk from 'chalk';
-import { clusterApiUrl, PublicKey, Transaction, Keypair, Connection, Cluster, LAMPORTS_PER_SOL, ParsedAccountData } from '@solana/web3.js';
+import { clusterApiUrl, PublicKey, Transaction, Keypair, Connection, Cluster, LAMPORTS_PER_SOL, ParsedAccountData, sendAndConfirmTransaction } from '@solana/web3.js';
 import * as fs from 'fs';
-import { chunkItems, getConnection, promiseRetry, timeout } from './helpers/utility';
+import { chunkItems, elapsed, getConnection, now, promiseRetry, timeout } from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
 import { LogFiles, MarketPlaces } from './helpers/constants';
 import { HolderAccount } from './types/holderaccounts';
 import { TransferError } from './types/errorTransfer';
 import { Transfer } from './types/transfer';
 
-export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 5): Promise<any> {
+export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 200): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     jsonData = JSON.parse(data);
@@ -46,16 +49,25 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
 
     for (let walletChunk of walletChunks) {
         await Promise.all(walletChunk.map(async (toWallet, index) => {
+            let start = now();
             try {
-                progressBar.increment();
                 const toWalletPk = new PublicKey(toWallet);
                 const mintPk = new PublicKey(mint);
+                const mintObj = await getMint(connection, mintPk, 'finalized', TOKEN_PROGRAM_ID);
                 const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
                 if (walletAta.amount < transferAmount) {
-                    const txnIns = createTransferInstruction(ownerAta, walletAta.address, fromWallet, transferAmount, [keypair], TOKEN_PROGRAM_ID);
-                    const txn = new Transaction().add(txnIns);
-                    const signature = await connection.sendTransaction(txn, [keypair], { skipPreflight: true, maxRetries: 50 });
-                    await connection.confirmTransaction(signature, 'finalized');
+                    let signature = '';
+                    if (mintObj.mintAuthority?.toBase58() == keypair.publicKey.toBase58()) {
+                        signature = await mintTo(connection, keypair, mintObj.address, walletAta.address, keypair, transferAmount, undefined, { commitment: 'confirmed', skipPreflight: true, maxRetries: 100, }, TOKEN_PROGRAM_ID);
+                    }
+                    else {
+                        const txnIns = createTransferInstruction(ownerAta, walletAta.address, fromWallet, transferAmount, [keypair], TOKEN_PROGRAM_ID);
+                        const txn = new Transaction().add(txnIns);
+                        txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+                        txn.feePayer = fromWallet;
+                        signature = await connection.sendTransaction(txn, [keypair], { skipPreflight: true, maxRetries: 50 });
+                        await connection.confirmTransaction(signature, 'finalized');
+                    }
                     let message = `Sent ${transferAmount} of ${mint} to ${toWallet}. Signature ${signature}. \n`;
                     log.info(chalk.green(message));
                     fs.appendFileSync('tokentransfers.txt', message);
@@ -64,14 +76,14 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
                     log.warn(chalk.yellow(`${toWallet} already has token ${mint}`));
                 }
             }
-            catch (err) {
+            catch (err: any) {
                 const message = `ERROR: Sending ${transferAmount} of ${mint} to ${toWallet} failed. \n`;
                 let errorMsg: TransferError = {
                     wallet: toWallet,
                     mint: mint,
                     transferAmount: transferAmount,
                     message: message,
-                    error: err
+                    error: err.message
                 };
                 log.error(chalk.red(message));
                 fs.appendFileSync(LogFiles.TokenTransferErrorsTxt, message);
@@ -83,7 +95,7 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
             }
             finally {
                 progressBar.increment();
-                progressBar.update(1);
+                elapsed(start, true, log);
             }
         }));
     }
@@ -112,13 +124,12 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
 
     for (let walletChunk of walletChunks) {
         await Promise.all(walletChunk.map(async (toWallet, index) => {
-           
+            let start = now();
             const totalTransferAmt = transferAmount * toWallet.mintIds.length * decimalsToUse;
             try {
-                progressBar.increment();
                 await tryTransfer(toWallet, tokenMint, connection, keypair, totalTransferAmt, ownerAta, fromWallet);
             }
-            catch (err) {
+            catch (err: any) {
                 const message = `ERROR: Sending ${totalTransferAmt} of ${tokenMint.toBase58()} to ${toWallet.walletId} failed. \n`;
                 let errorMsg: TransferError = {
                     wallet: toWallet.walletId,
@@ -126,7 +137,7 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
                     holdings: toWallet.totalAmount,
                     transferAmount: totalTransferAmt,
                     message: message,
-                    error: err
+                    error: err.message
                 };
                 log.error(chalk.red(message));
                 fs.appendFileSync(LogFiles.TokenTransferNftTxt, message);
@@ -138,6 +149,7 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
             }
             finally {
                 progressBar.increment();
+                elapsed(start, true, log);
             }
         }));
     }
@@ -179,6 +191,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
     const mintTransferChunks = chunkItems(mintsTransferList, batchSize);
     for (let mintTransferChunk of mintTransferChunks) {
         await Promise.all(mintTransferChunk.map(async (mint, index) => {
+            let start = now();
             try {
                 const ownerAta = await getAssociatedTokenAddress(new PublicKey(mint.mintId), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
                 await tryTransferMint(mint, connection, keypair, 1, ownerAta, fromWallet);
@@ -196,7 +209,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
                 log.error(chalk.red(message));
                 fs.appendFileSync(LogFiles.TransferNftErrorsTxt, message);
                 const errorString = fs.readFileSync(LogFiles.TransferErrorJson, 'utf-8');
-                if(errorString) {
+                if (errorString) {
                     const jsonErrors = JSON.parse(errorString) as TransferError[];
                     jsonErrors.push(errorMsg);
                     const writeJson = JSON.stringify(jsonErrors);
@@ -211,6 +224,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
             }
             finally {
                 progressBar.increment();
+                elapsed(start, true);
             }
         }));
     }
@@ -242,6 +256,7 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
     const retryErrorsChunk = chunkItems(distributionList, batchSize);
     for (let retrtyErrorChunk of retryErrorsChunk) {
         await Promise.all(retrtyErrorChunk.map(async (retryError, index) => {
+            let start = now();
             try {
                 const ownerAta = await getAssociatedTokenAddress(new PublicKey(retryError.mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
                 await tryTransferError(retryError, connection, keypair, ownerAta, fromWallet, retryError.isNFT);
@@ -257,11 +272,11 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
                 };
                 log.error(chalk.red(message));
                 fs.appendFileSync(LogFiles.RetryTransferErrorTxt, message);
-                if(!fs.existsSync(LogFiles.RetryTransferErrorJson)) {
+                if (!fs.existsSync(LogFiles.RetryTransferErrorJson)) {
                     fs.writeFileSync(LogFiles.RetryTransferErrorJson, JSON.stringify([]));
                 }
                 const errorString = fs.readFileSync(LogFiles.RetryTransferErrorJson, 'utf-8');
-                if(errorString) {
+                if (errorString) {
                     const jsonErrors = JSON.parse(errorString) as TransferError[];
                     jsonErrors.push(errorMsg);
                     const writeJson = JSON.stringify(jsonErrors);
@@ -276,6 +291,7 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
             }
             finally {
                 progressBar.increment();
+                elapsed(start, true, log);
             }
         }));
 
@@ -284,8 +300,8 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
 }
 
 async function tryTransfer(toWallet: HolderAccount, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
-    
-    const transfer  = await prepTransfer(new PublicKey(toWallet.walletId), tokenMint, toWallet.totalAmount, connection, keypair, ownerAta, fromWallet, false);
+
+    const transfer = await prepTransfer(new PublicKey(toWallet.walletId), tokenMint, toWallet.totalAmount, connection, keypair, ownerAta, fromWallet, false);
     const signature = await connection.sendTransaction(transfer.txn, [keypair], { skipPreflight: true, maxRetries: 100 });
     await connection.confirmTransaction(signature, 'finalized');
     let message = `Sent ${totalTransferAmt} of ${tokenMint.toBase58()} to ${transfer.destination.toBase58()}. Signature ${signature}. \n`;
@@ -314,14 +330,14 @@ async function tryTransferMint(toWallet: MintTransfer, connection: Connection, k
     return signature;
 }
 
-async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferAmt: number, connection: Connection, keypair: Keypair, ownerAta: PublicKey, fromWallet: PublicKey, createCloseIx: boolean = false) : Promise<Transfer> {
-    
+async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferAmt: number, connection: Connection, keypair: Keypair, ownerAta: PublicKey, fromWallet: PublicKey, createCloseIx: boolean = false): Promise<Transfer> {
+
     const toWalletPk = new PublicKey(toWallet);
     const mintPk = new PublicKey(mint);
     const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
     const txnIns = createTransferInstruction(ownerAta, walletAta.address, fromWallet, totalTransferAmt, [keypair], TOKEN_PROGRAM_ID);
     const txn = new Transaction().add(txnIns);
-    if (createCloseIx){
+    if (createCloseIx) {
         const closeAccount = createCloseAccountInstruction(ownerAta, keypair.publicKey, keypair.publicKey, undefined, TOKEN_PROGRAM_ID);
         txn.add(closeAccount);
     }
@@ -330,6 +346,15 @@ async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferA
         mint: mintPk,
         destination: toWalletPk
     }
+}
+
+export async function findMintersAtPrice(price: number) { 
+    
+}
+
+
+async function getTransaction(mint: PublicKey, connection: Connection){
+    connection.getSignaturesForAddress(mint, {})
 }
 
 function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
@@ -349,15 +374,15 @@ function isNotMarketPlace(walletId: string): boolean {
 }
 
 function getLamports(decimal: number): number {
-    if(decimal == 9) {
+    if (decimal == 9) {
         return LAMPORTS_PER_SOL;
     }
-    else if (decimal == 0){
+    else if (decimal == 0) {
         return 1;
     }
     else {
         let amount = 0;
-        switch(decimal){
+        switch (decimal) {
             case 8:
                 amount = 1_000_000_00;
                 break;
@@ -367,21 +392,21 @@ function getLamports(decimal: number): number {
             case 6:
                 amount = 1_000_000;
                 break;
-            case 5: 
+            case 5:
                 amount = 1_000_00;
-                break; 
-            case 4: 
+                break;
+            case 4:
                 amount = 1_000_0;
-                break; 
-            case 3: 
+                break;
+            case 3:
                 amount = 1_000;
-                break; 
-            case 2: 
+                break;
+            case 2:
                 amount = 1_00;
-                break; 
-            case 1: 
+                break;
+            case 1:
                 amount = 1_0;
-                break; 
+                break;
         }
         return amount;
     }

@@ -111,11 +111,33 @@ export function loadWalletKey(keypair: string): Keypair {
 }
 
 export function getConnection(cluster: string, rpcUrl: string | null): Connection {
-    const connection = rpcUrl != null ? new Connection(rpcUrl, { confirmTransactionInitialTimeout: 120000 }) : new Connection(clusterApiUrl(cluster as Cluster), { confirmTransactionInitialTimeout: 120000 });
+    const connection = rpcUrl != null ? new Connection(rpcUrl, { confirmTransactionInitialTimeout: 170000 }) : new Connection(clusterApiUrl(cluster as Cluster), { confirmTransactionInitialTimeout: 120000 });
     return connection;
 }
 
 export async function sendRawTransactionWithRetry(connection: Connection, txn: Buffer): Promise<string> {
-   const result = await sendAndConfirmWithRetry(connection, txn, {skipPreflight: true, maxRetries: 100}, 'finalized', 120000);
-   return result.txid;
+    const result = await sendAndConfirmWithRetry(connection, txn, { skipPreflight: true, maxRetries: 100 }, 'finalized', 120000);
+    return result.txid;
+}
+
+export function now(eventName = null) {
+    if (eventName) {
+        console.log(`Started ${eventName}..`);
+    }
+    return new Date().getTime();
+}
+
+// Returns time elapsed since `beginning`
+// (and, optionally, prints the duration in seconds)
+export function elapsed(beginning: number, log = false, logger?: any) {
+    const duration = new Date().getTime() - beginning;
+    if (log) {
+        if (logger) {
+            logger.info(` ${duration / 1000}s `);
+        }
+        else {
+            console.log(` ${duration / 1000}s `);
+        }
+    }
+    return duration;
 }

@@ -5,7 +5,7 @@ import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
 import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors } from './spltokenairdrop';
-import { getSnapshot, loadWalletKey } from './helpers/utility';
+import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
@@ -36,14 +36,14 @@ programCommand('airdrop-token')
     );
     let start = now();
     clearLogFiles();
-    const { keypair, env, airdropListPath, amount, simulate, rpcUrl } = cmd.opts();
+    const { env,keypair, airdroplist, amount, simulate, rpcUrl } = cmd.opts();
     const kp = loadWalletKey(keypair);
     if (!simulate) {
-      await airdropToken(kp, airdropListPath, amount, env, rpcUrl);
+      await airdropToken(kp, airdroplist, amount, env, rpcUrl);
 
     }
     else {
-      const result = await airdropToken(kp, airdropListPath, amount, env, rpcUrl, true);
+      const result = await airdropToken(kp, airdroplist, amount, env, rpcUrl, true);
       log.log(result);
     }
     elapsed(start, true); 
@@ -267,23 +267,6 @@ function clearLogFiles(isRetry: boolean = false) {
     fs.writeFileSync(LogFiles.TransferErrorJson, JSON.stringify([]));
     fs.writeFileSync(LogFiles.RetryTransferErrorJson, JSON.stringify([]));
   }
-}
-
-function now(eventName = null) {
-  if (eventName) {
-    console.log(`Started ${eventName}..`);
-  }
-  return new Date().getTime();
-}
-
-// Returns time elapsed since `beginning`
-// (and, optionally, prints the duration in seconds)
-function elapsed(beginning: number, log = false) {
-  const duration = new Date().getTime() - beginning;
-  if (log) {
-      console.log(`${duration/1000}s`);
-  }
-  return duration;
 }
 
 program.parse(process.argv);
