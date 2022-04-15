@@ -102,14 +102,14 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
     progressBar.stop();
 }
 
-export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, decimals: number, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 5): Promise<any> {
+export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, decimals: number, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50): Promise<any> {
     var connection = getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     let holders: HolderAccount[] = filterMarketPlacesByHolders(holdersList);
     let decimalsToUse = getLamports(decimals);
     console.log(holders.length, holdersList.length);
     if (simulate) {
-        return holders.map(x => ({ wallet: x, transferAmt: (transferAmount * x.mintIds.length) }));
+        return holders.map(x => {return { wallet: x.walletId, transferAmt: (transferAmount * x.totalAmount * decimalsToUse) }});
     }
 
     const progressBar = new cliProgress.SingleBar(
@@ -125,7 +125,7 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
     for (let walletChunk of walletChunks) {
         await Promise.all(walletChunk.map(async (toWallet, index) => {
             let start = now();
-            const totalTransferAmt = transferAmount * toWallet.mintIds.length * decimalsToUse;
+            const totalTransferAmt = transferAmount * toWallet.totalAmount * decimalsToUse;
             try {
                 await tryTransfer(toWallet, tokenMint, connection, keypair, totalTransferAmt, ownerAta, fromWallet);
             }
@@ -299,9 +299,24 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
     progressBar.stop();
 }
 
+export function formatHoldersList(snapShotFilePath: string) : HolderAccount[] {
+    const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any;
+    let holders: HolderAccount[] = [];
+    for (var wallet in jsonData) {
+        const holderAcct: HolderAccount = {
+            walletId: wallet,
+            totalAmount: jsonData[wallet].amount,
+            mintIds: jsonData[wallet].mints
+        }
+        holders.push(holderAcct);
+    }
+    return holders;
+}
+
 async function tryTransfer(toWallet: HolderAccount, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
 
-    const transfer = await prepTransfer(new PublicKey(toWallet.walletId), tokenMint, toWallet.totalAmount, connection, keypair, ownerAta, fromWallet, false);
+    const transfer = await prepTransfer(new PublicKey(toWallet.walletId), tokenMint, totalTransferAmt, connection, keypair, ownerAta, fromWallet, false);
     const signature = await connection.sendTransaction(transfer.txn, [keypair], { skipPreflight: true, maxRetries: 100 });
     await connection.confirmTransaction(signature, 'finalized');
     let message = `Sent ${totalTransferAmt} of ${tokenMint.toBase58()} to ${transfer.destination.toBase58()}. Signature ${signature}. \n`;
@@ -362,7 +377,8 @@ function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
 }
 
 function filterMarketPlacesByHolders(transfers: HolderAccount[]): HolderAccount[] {
-    return transfers.filter(x => isNotMarketPlace(x.walletId));
+    let arr =  _.filter(transfers, x => isNotMarketPlace(x.walletId));
+    return arr;
 }
 
 function filterMarketPlacesByWallet(wallets: string[]): string[] {
@@ -370,7 +386,14 @@ function filterMarketPlacesByWallet(wallets: string[]): string[] {
 }
 
 function isNotMarketPlace(walletId: string): boolean {
-    return !_.isEqual(walletId, MarketPlaces.MagicEden) && !_.isEqual(walletId, MarketPlaces.AlphaArt) && !_.isEqual(walletId, MarketPlaces.DigitalEyes) && !_.isEqual(walletId, MarketPlaces.ExchangeArt) && !_.isEqual(walletId, MarketPlaces.Solanart);
+    const mktplaces = [
+        MarketPlaces.MagicEden,
+        MarketPlaces.AlphaArt,
+        MarketPlaces.DigitalEyes,
+        MarketPlaces.ExchangeArt,
+        MarketPlaces.Solanart
+    ]
+    return !mktplaces.includes(walletId);
 }
 
 function getLamports(decimal: number): number {

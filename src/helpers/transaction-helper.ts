@@ -1,4 +1,4 @@
-import { Provider } from "@project-serum/anchor";
+import { AnchorProvider, Provider } from "@project-serum/anchor";
 import {
   Commitment,
   Connection,
@@ -42,7 +42,7 @@ export interface BigInstructionResult<A> {
 
 export async function sendInstructions(
   idlErrors: Map<number, string>,
-  provider: Provider,
+  provider: AnchorProvider,
   instructions: TransactionInstruction[],
   signers: Signer[],
   payer: PublicKey = provider.wallet.publicKey,
@@ -50,7 +50,7 @@ export async function sendInstructions(
 ): Promise<string> {
   let tx = new Transaction();
   tx.recentBlockhash = (
-    await provider.connection.getRecentBlockhash()
+    await provider.connection.getLatestBlockhash()
   ).blockhash;
   tx.feePayer = payer || provider.wallet.publicKey;
   tx.add(...instructions);
@@ -84,14 +84,14 @@ function truthy<T>(value: T): value is Truthy<T> {
 
 export async function sendMultipleInstructions(
   idlErrors: Map<number, string>,
-  provider: Provider,
+  provider: AnchorProvider,
   instructionGroups: TransactionInstruction[][],
   signerGroups: Signer[][],
   payer?: PublicKey,
   finality: Finality = "confirmed"
 ): Promise<Iterable<string>> {
   const recentBlockhash = (
-    await provider.connection.getRecentBlockhash("confirmed")
+    await provider.connection.getLatestBlockhash("confirmed")
   ).blockhash;
   const txns = instructionGroups
     .map((instructions, index) => {

@@ -4,7 +4,7 @@ import * as figlet from 'figlet';
 import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors } from './spltokenairdrop';
+import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList } from './spltokenairdrop';
 import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
@@ -50,9 +50,8 @@ programCommand('airdrop-token')
   });
 
 programCommand('airdrop-token-per-nft')
-  .argument('<mintid>', 'Airdrop token MintID')
   .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseInt, 1)
-  .requiredOption('-d, --decimals', 'Decimals of the SPL token', myParseInt, 0)
+  .requiredOption('-d, --decimals <number>', 'Decimals of the SPL token', myParseInt, 9)
   .requiredOption('-m, --mintid <string>', 'Airdrop token MintID')
   .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
   .option('-h, --getholders <boolean>', 'Take snapshot', false)
@@ -62,7 +61,8 @@ programCommand('airdrop-token-per-nft')
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .action(async (mintid, _, cmd) => {
+  .option('-b, --batch-size <number>', 'Amount to batch transactions', '25')
+  .action(async ( _, cmd) => {
     console.log(
       chalk.blue(
         figlet.textSync('token per nft airdrop', { horizontalLayout: 'controlled smushing' })
@@ -70,7 +70,7 @@ programCommand('airdrop-token-per-nft')
     );
     let start = now();
     clearLogFiles();
-    const { keypair, env, amount, decimals, airdroplist, getHolders, verifiedcreator, simulate, rpcUrl } = cmd.opts();
+    const { keypair, env, amount, decimals, mintid, airdroplist, getHolders, verifiedcreator, simulate, rpcUrl } = cmd.opts();
     let holderAccounts: HolderAccount[] = [];
     const kp = loadWalletKey(keypair);
     const mintPk = new PublicKey(mintid);
@@ -83,7 +83,7 @@ programCommand('airdrop-token-per-nft')
       holderAccounts = JSON.parse(holders) as HolderAccount[];
     }
     const result = await airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate);
-    log.log(result);
+    log.info(result);
     elapsed(start, true); 
   });
 
@@ -207,6 +207,22 @@ programCommand('get-holders-cm', { requireWallet: false })
     fs.writeFileSync('holdersList.json', jsonObjs);
     log.log('Holders written to holders.json');
     log.log(result);
+    elapsed(start, true); 
+  });
+
+  programCommand('format-snapshot', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    let start = now();
+    const holders = formatHoldersList(snapshot);
+    const holdersStr = JSON.stringify(holders);
+    fs.writeFileSync('holdersList.json', holdersStr);
+    log.log('Holders written to holders.json');
     elapsed(start, true); 
   });
 // From commander examples

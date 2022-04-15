@@ -45,3 +45,4 @@ holder*.json
 *transfer*.txt
 *transfer*.json
 *.txt
+/logs
