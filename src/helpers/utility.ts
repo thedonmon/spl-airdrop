@@ -6,7 +6,11 @@ import { Cluster, clusterApiUrl, Connection, Keypair } from '@solana/web3.js';
 import * as fs from 'fs';
 import log from 'loglevel';
 import { sendAndConfirmWithRetry } from './transaction-helper';
+import anchor from '@project-serum/anchor';
 
+const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey(
+    'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s',
+  );
 
 export function sleep(ms: number): Promise<any> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -141,3 +145,18 @@ export function elapsed(beginning: number, log = false, logger?: any) {
     }
     return duration;
 }
+
+export async function getMetadata(
+    mint: anchor.web3.PublicKey,
+): Promise<anchor.web3.PublicKey> {
+    return (
+        await anchor.web3.PublicKey.findProgramAddress(
+            [
+                Buffer.from('metadata'),
+                TOKEN_METADATA_PROGRAM_ID.toBuffer(),
+                mint.toBuffer(),
+            ],
+            TOKEN_METADATA_PROGRAM_ID,
+        )
+    )[0];
+};
