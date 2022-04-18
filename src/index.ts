@@ -4,7 +4,7 @@ import * as figlet from 'figlet';
 import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList } from './spltokenairdrop';
+import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, getMetadataUris } from './spltokenairdrop';
 import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
@@ -191,20 +191,20 @@ programCommand('get-holders', { requireWallet: false })
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
+  .option('-b, --batch-size <number>', 'Ammount to batch transactions', myParseInt, 100)
   .action(async (mintIds: string[], options, cmd) => {
-    console.log(cmd);
     console.log(
       chalk.greenBright(
         figlet.textSync('get metadata', { horizontalLayout: 'controlled smushing' })
       )
     );
-    const { env, rpcUrl } = cmd.opts();
+    const { env, rpcUrl, batchSize } = cmd.opts();
     let start = now();
     if (mintIds.length > 0) {
-      const result = await getSnapshot(mintIds, rpcUrl);
+      const result = await getMetadataUris(mintIds, env, rpcUrl, batchSize);
       var jsonObjs = JSON.stringify(result);
-      fs.writeFileSync('holders.json', jsonObjs);
-      log.log('Holders written to holders.json');
+      fs.writeFileSync('metadata.json', jsonObjs);
+      log.log('Metadata info written to metadata.json');
       log.log(result);
     }
     else {

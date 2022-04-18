@@ -15,13 +15,16 @@ import log from 'loglevel';
 import chalk from 'chalk';
 import { clusterApiUrl, PublicKey, Transaction, Keypair, Connection, Cluster, LAMPORTS_PER_SOL, ParsedAccountData, sendAndConfirmTransaction } from '@solana/web3.js';
 import * as fs from 'fs';
-import { chunkItems, elapsed, getConnection, now, promiseRetry, timeout } from './helpers/utility';
+import { chunkItems, elapsed, getConnection, getMetadata, now, promiseRetry, timeout } from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
 import { LogFiles, MarketPlaces } from './helpers/constants';
 import { HolderAccount } from './types/holderaccounts';
 import { TransferError } from './types/errorTransfer';
 import { Transfer } from './types/transfer';
 import { MetadataResult } from './types/metadataresult';
+import { Metadata } from '@metaplex-foundation/mpl-token-metadata';
+import axios from 'axios';
+import { IMetadata } from './types/IMetadata';
 
 export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 200): Promise<any> {
     let jsonData: any = {};
@@ -300,17 +303,38 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
     progressBar.stop();
 }
 
-export async function getMetadataUris(mints: string[], batchSize = 100) : Promise<MetadataResult[]> {
+export async function getMetadataUris(mints: string[], cluster: string = 'devnet', rpcUrl?: string, batchSize = 100) : Promise<MetadataResult[]> {
+    
+    const connection = getConnection(cluster, rpcUrl);
     let metadataResults: MetadataResult[] = [];
     const mintChunks = chunkItems(mints, batchSize);
-
+    const progrressBar = getProgressBar();
+    progrressBar.start(mints.length, 0);
     for(var mintChunk of mintChunks){
         await Promise.all(mintChunk.map(async (mint, index) => {
             try {
-                await getMe
+                const mintPk = new PublicKey(mint);
+                const metadataAccount = await getMetadata(mintPk);
+                const metadata = await Metadata.fromAccountAddress(connection, metadataAccount);
+                const arweaveUri = _.split(encodeURI(metadata.data.uri), '%00')[0];
+                const metadataParsed = await axios.get<IMetadata>(arweaveUri);
+                let metadataRes: MetadataResult = {
+                    mint,
+                    mintUri: arweaveUri,
+                    metadata: metadataParsed.data
+                }
+                metadataResults.push(metadataRes);
+            }
+            catch(err: any) {
+                const message = `\nFailed to get metadata for mint ${mint}`;
+                log.error(chalk.red(message, err.message));
+            }
+            finally{
+                progrressBar.increment();
             }
         }));
     }
+    progrressBar.stop();
     return metadataResults;
 }
 
@@ -376,10 +400,6 @@ async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferA
         mint: mintPk,
         destination: toWalletPk
     }
-}
-
-export async function findMintersAtPrice(price: number) { 
-    
 }
 
 
@@ -449,6 +469,18 @@ function getLamports(decimal: number): number {
         return amount;
     }
 
+}
+
+function getProgressBar(): cliProgress.SingleBar {
+    const progressBar = new cliProgress.SingleBar(
+        {
+            format: 'Progress: [{bar}] {percentage}% | {value}/{total} ',
+            barCompleteChar: '\u2588',
+            barIncompleteChar: '\u2591',
+        },
+        cliProgress.Presets.rect,
+    );
+    return progressBar;
 }
 
 async function filterRecentTransactions(pk: PublicKey, filterAddress: string, connection: Connection): Promise<(string | undefined)[]> {

@@ -1,4 +1,3 @@
-import { AnchorProvider, Provider } from "@project-serum/anchor";
 import {
   Commitment,
   Connection,
@@ -16,6 +15,7 @@ import {
 } from "@solana/web3.js";
 import { sleep } from "./utility";
 import { ProgramError } from "./anchorError";
+import { Provider } from "@project-serum/anchor";
 
 async function promiseAllInOrder<T>(
   it: (() => Promise<T>)[]
@@ -42,7 +42,7 @@ export interface BigInstructionResult<A> {
 
 export async function sendInstructions(
   idlErrors: Map<number, string>,
-  provider: AnchorProvider,
+  provider: Provider,
   instructions: TransactionInstruction[],
   signers: Signer[],
   payer: PublicKey = provider.wallet.publicKey,
@@ -84,7 +84,7 @@ function truthy<T>(value: T): value is Truthy<T> {
 
 export async function sendMultipleInstructions(
   idlErrors: Map<number, string>,
-  provider: AnchorProvider,
+  provider: Provider,
   instructionGroups: TransactionInstruction[][],
   signerGroups: Signer[][],
   payer?: PublicKey,
@@ -113,13 +113,13 @@ export async function sendMultipleInstructions(
     .filter(truthy);
 
   const txnsSigned = (await provider.wallet.signAllTransactions(txns)).map(
-    (tx) => tx.serialize()
+    (tx: any) => tx.serialize()
   );
 
   console.log("Sending multiple transactions...");
   try {
     return await promiseAllInOrder(
-      txnsSigned.map((txn) => async () => {
+      txnsSigned.map((txn: any) => async () => {
         const { txid } = await sendAndConfirmWithRetry(
           provider.connection,
           txn,

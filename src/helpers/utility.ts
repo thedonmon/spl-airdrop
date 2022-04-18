@@ -2,13 +2,12 @@ import { HolderAccount } from '../types/holderaccounts';
 import { RpcResponse } from '../types/rpcresponse';
 import { RpcRequest } from '../types/rpcrequest';
 import axios from 'axios';
-import { Cluster, clusterApiUrl, Connection, Keypair } from '@solana/web3.js';
+import { Cluster, clusterApiUrl, Connection, Keypair, PublicKey } from '@solana/web3.js';
 import * as fs from 'fs';
 import log from 'loglevel';
 import { sendAndConfirmWithRetry } from './transaction-helper';
-import anchor from '@project-serum/anchor';
 
-const TOKEN_METADATA_PROGRAM_ID = new anchor.web3.PublicKey(
+const TOKEN_METADATA_PROGRAM_ID = new PublicKey(
     'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s',
   );
 
@@ -114,7 +113,7 @@ export function loadWalletKey(keypair: string): Keypair {
     return loaded;
 }
 
-export function getConnection(cluster: string, rpcUrl: string | null): Connection {
+export function getConnection(cluster: string, rpcUrl: string | null | undefined): Connection {
     const connection = rpcUrl != null ? new Connection(rpcUrl, { confirmTransactionInitialTimeout: 170000 }) : new Connection(clusterApiUrl(cluster as Cluster), { confirmTransactionInitialTimeout: 120000 });
     return connection;
 }
@@ -147,10 +146,10 @@ export function elapsed(beginning: number, log = false, logger?: any) {
 }
 
 export async function getMetadata(
-    mint: anchor.web3.PublicKey,
-): Promise<anchor.web3.PublicKey> {
+    mint: PublicKey,
+): Promise<PublicKey> {
     return (
-        await anchor.web3.PublicKey.findProgramAddress(
+        await PublicKey.findProgramAddress(
             [
                 Buffer.from('metadata'),
                 TOKEN_METADATA_PROGRAM_ID.toBuffer(),

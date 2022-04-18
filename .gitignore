@@ -46,3 +46,5 @@ holder*.json
 *transfer*.json
 *.txt
 /logs
+metadata*.json
+*.sh
