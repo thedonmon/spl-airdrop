@@ -21,6 +21,7 @@ import { LogFiles, MarketPlaces } from './helpers/constants';
 import { HolderAccount } from './types/holderaccounts';
 import { TransferError } from './types/errorTransfer';
 import { Transfer } from './types/transfer';
+import { MetadataResult } from './types/metadataresult';
 
 export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 200): Promise<any> {
     let jsonData: any = {};
@@ -297,6 +298,20 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
 
     }
     progressBar.stop();
+}
+
+export async function getMetadataUris(mints: string[], batchSize = 100) : Promise<MetadataResult[]> {
+    let metadataResults: MetadataResult[] = [];
+    const mintChunks = chunkItems(mints, batchSize);
+
+    for(var mintChunk of mintChunks){
+        await Promise.all(mintChunk.map(async (mint, index) => {
+            try {
+                await getMe
+            }
+        }));
+    }
+    return metadataResults;
 }
 
 export function formatHoldersList(snapShotFilePath: string) : HolderAccount[] {

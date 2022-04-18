@@ -183,6 +183,36 @@ programCommand('get-holders', { requireWallet: false })
     elapsed(start, true); 
   });
 
+  programCommand('get-metadata', { requireWallet: false })
+  .argument('<mintIds>', 'MintIds path from candy machine', val => {
+    return JSON.parse(fs.readFileSync(`${val}`, 'utf-8'));
+  })
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (mintIds: string[], options, cmd) => {
+    console.log(cmd);
+    console.log(
+      chalk.greenBright(
+        figlet.textSync('get metadata', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { env, rpcUrl } = cmd.opts();
+    let start = now();
+    if (mintIds.length > 0) {
+      const result = await getSnapshot(mintIds, rpcUrl);
+      var jsonObjs = JSON.stringify(result);
+      fs.writeFileSync('holders.json', jsonObjs);
+      log.log('Holders written to holders.json');
+      log.log(result);
+    }
+    else {
+      log.log('Please check file is in correct format');
+    }
+    elapsed(start, true); 
+  });
+
 programCommand('get-holders-cm', { requireWallet: false })
   .argument('<verifiedCreatorId>', 'Verified Creator Id')
   .option(
