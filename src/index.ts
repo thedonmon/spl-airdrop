@@ -4,13 +4,14 @@ import * as figlet from 'figlet';
 import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, getMetadataUris } from './spltokenairdrop';
+import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, getMetadataUris, updateMetadata } from './spltokenairdrop';
 import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
 import path from 'path';
 import { LogFiles } from './helpers/constants';
+import { MetadataResult } from './types/metadataresult';
 
 const CACHE_PATH = './.cache';
 
@@ -206,6 +207,34 @@ programCommand('get-holders', { requireWallet: false })
       fs.writeFileSync('metadata.json', jsonObjs);
       log.log('Metadata info written to metadata.json');
       log.log(result);
+    }
+    else {
+      log.log('Please check file is in correct format');
+    }
+    elapsed(start, true); 
+  });
+
+  programCommand('update-metadata', { requireWallet: false })
+  .argument('<metadata>', 'Metadata to update', val => {
+    return JSON.parse(fs.readFileSync(`${val}`, 'utf-8')) as MetadataResult[];
+  })
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .option('-b, --batch-size <number>', 'Ammount to batch transactions', myParseInt, 100)
+  .action(async (metadata: MetadataResult[], options, cmd) => {
+    console.log(
+      chalk.greenBright(
+        figlet.textSync('get metadata', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { env, rpcUrl, batchSize } = cmd.opts();
+    let start = now();
+    if (metadata.length > 0) {
+      const result = await updateMetadata(metadata, batchSize);
+      log.log('Metadata info written to mints folder');
+      log.log(result.length);
     }
     else {
       log.log('Please check file is in correct format');

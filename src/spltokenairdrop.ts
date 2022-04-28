@@ -338,6 +338,33 @@ export async function getMetadataUris(mints: string[], cluster: string = 'devnet
     return metadataResults;
 }
 
+export async function updateMetadata(metadata: MetadataResult[], batchSize = 100) : Promise<MetadataResult[]> {
+    
+    const metadataChunks = chunkItems(metadata, batchSize);
+    const progrressBar = getProgressBar();
+    progrressBar.start(metadata.length, 0);
+    for(var metadataChunk of metadataChunks){
+        await Promise.all(metadataChunk.map(async (meta, index) => {
+            try {
+                let newMetadata = meta.metadata!;
+                newMetadata.symbol = "CoC+";
+                newMetadata.attributes!.push({trait_type: 'Upgrade', value: 'Milk'});
+                const jsonStr = JSON.stringify(newMetadata);
+                Promise.resolve(fs.writeFileSync(`mints/${meta.mint}.json`, jsonStr));
+            }
+            catch(err: any) {
+                const message = `\nFailed to write metadata for mint ${meta}`;
+                log.error(chalk.red(message, err.message));
+            }
+            finally{
+                progrressBar.increment();
+            }
+        }));
+    }
+    progrressBar.stop();
+    return metadata;
+}
+
 export function formatHoldersList(snapShotFilePath: string) : HolderAccount[] {
     const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
