@@ -348,7 +348,7 @@ export async function updateMetadata(metadata: MetadataResult[], batchSize = 100
             try {
                 let newMetadata = meta.metadata!;
                 newMetadata.symbol = "CoC+";
-                newMetadata.attributes!.push({trait_type: 'Upgrade', value: 'Milk'});
+                newMetadata.attributes!.push({trait_type: 'Upgrade', value: 'Melk'});
                 const jsonStr = JSON.stringify(newMetadata);
                 Promise.resolve(fs.writeFileSync(`mints/${meta.mint}.json`, jsonStr));
             }
