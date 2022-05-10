@@ -4,7 +4,7 @@ import * as figlet from 'figlet';
 import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList } from './spltokenairdrop';
+import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, formatNftDrop } from './spltokenairdrop';
 import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
@@ -106,6 +106,7 @@ programCommand('airdrop-nft')
     let start = now();
     clearLogFiles();
     const { keypair, env, mintIds, airdroplist, simulate, rpcUrl, batchSize } = cmd.opts();
+    console.log(cmd.opts());
     const kp = loadWalletKey(keypair);
     if (!simulate) {
       await airdropNft(kp, airdroplist, mintIds, env, rpcUrl, false, batchSize as number);
@@ -222,6 +223,26 @@ programCommand('get-holders-cm', { requireWallet: false })
     const holders = formatHoldersList(snapshot);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('holdersList.json', holdersStr);
+    log.log('Holders written to holders.json');
+    elapsed(start, true); 
+  });
+
+  programCommand('format-mint-drop', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .requiredOption('-a, --amount <number>', 'Amount of NFTs per mint')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const {amount} = cmd.opts();
+    let start = now();
+    const stringData = fs.readFileSync(snapshot, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any;
+    const holders = formatNftDrop(jsonData, amount as number);
+    const holdersStr = JSON.stringify(holders);
+    fs.writeFileSync('mintransfer.json', holdersStr);
     log.log('Holders written to holders.json');
     elapsed(start, true); 
   });

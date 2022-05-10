@@ -21,8 +21,9 @@ import { LogFiles, MarketPlaces } from './helpers/constants';
 import { HolderAccount } from './types/holderaccounts';
 import { TransferError } from './types/errorTransfer';
 import { Transfer } from './types/transfer';
+import { Distribution } from './types/distribution';
 
-export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 200): Promise<any> {
+export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     jsonData = JSON.parse(data);
@@ -53,8 +54,8 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
             try {
                 const toWalletPk = new PublicKey(toWallet);
                 const mintPk = new PublicKey(mint);
-                const mintObj = await getMint(connection, mintPk, 'finalized', TOKEN_PROGRAM_ID);
-                const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+                const mintObj = await getMint(connection, mintPk, 'confirmed', TOKEN_PROGRAM_ID);
+                const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'confirmed', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
                 if (walletAta.amount < transferAmount) {
                     let signature = '';
                     if (mintObj.mintAuthority?.toBase58() == keypair.publicKey.toBase58()) {
@@ -259,7 +260,14 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
             let start = now();
             try {
                 const ownerAta = await getAssociatedTokenAddress(new PublicKey(retryError.mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-                await tryTransferError(retryError, connection, keypair, ownerAta, fromWallet, retryError.isNFT);
+                const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, new PublicKey(retryError.mint), new PublicKey(retryError.wallet), false, 'confirmed', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+                if (walletAta.amount < retryError.transferAmount) {
+                    await tryTransferError(retryError, connection, keypair, ownerAta, fromWallet, retryError.isNFT);
+                }
+                else {
+                    log.warn(chalk.yellow(`${retryError.wallet} already has token ${retryError.mint}`));
+                }
+
             }
             catch (err: any) {
                 const message = `ERROR: Failed AGAIN to send ${retryError.mint} to ${retryError.wallet}.`;
@@ -297,6 +305,19 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
 
     }
     progressBar.stop();
+}
+
+export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: number) : Distribution[] {
+    let mintTfer: Distribution[] = [];
+    for (var wallet of holderAccounts) {
+        const holderAcct: Distribution = {
+            wallet: wallet.walletId,
+            totalOwnedNftsCount: wallet.totalAmount,
+            nFtsToAirdrop: wallet.totalAmount * amountPerMint
+        }
+        mintTfer.push(holderAcct);
+    }
+    return mintTfer;
 }
 
 export function formatHoldersList(snapShotFilePath: string) : HolderAccount[] {

@@ -111,7 +111,7 @@ export function loadWalletKey(keypair: string): Keypair {
 }
 
 export function getConnection(cluster: string, rpcUrl: string | null): Connection {
-    const connection = rpcUrl != null ? new Connection(rpcUrl, { confirmTransactionInitialTimeout: 170000 }) : new Connection(clusterApiUrl(cluster as Cluster), { confirmTransactionInitialTimeout: 120000 });
+    const connection = rpcUrl != null ? new Connection(rpcUrl, { confirmTransactionInitialTimeout: 120000, commitment: 'confirmed' }) : new Connection(clusterApiUrl(cluster as Cluster), { confirmTransactionInitialTimeout: 120000, commitment: 'confirmed' });
     return connection;
 }
 
