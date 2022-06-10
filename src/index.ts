@@ -4,7 +4,7 @@ import * as figlet from 'figlet';
 import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, formatNftDrop } from './spltokenairdrop';
+import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, formatNftDrop, formatNftDropByWallet } from './spltokenairdrop';
 import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
@@ -71,6 +71,7 @@ programCommand('airdrop-token-per-nft')
     let start = now();
     clearLogFiles();
     const { keypair, env, amount, decimals, mintid, airdroplist, getHolders, verifiedcreator, simulate, rpcUrl } = cmd.opts();
+    console.log(cmd.opts());
     let holderAccounts: HolderAccount[] = [];
     const kp = loadWalletKey(keypair);
     const mintPk = new PublicKey(mintid);
@@ -240,7 +241,7 @@ programCommand('get-holders-cm', { requireWallet: false })
     let start = now();
     const stringData = fs.readFileSync(snapshot, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
-    const holders = formatNftDrop(jsonData, amount as number);
+    const holders = formatNftDropByWallet(jsonData, amount as number);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('mintransfer.json', holdersStr);
     log.log('Holders written to holders.json');

@@ -158,7 +158,7 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
 }
 
 
-export async function airdropNft(keypair: Keypair, whitelistPath: string, mintlistPath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 5): Promise<any> {
+export async function airdropNft(keypair: Keypair, whitelistPath: string, mintlistPath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     const mintlist = fs.readFileSync(mintlistPath, "utf8");
@@ -171,7 +171,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
     console.log(distributionList);
     for (let distro of distributionList) {
         const mintsToTransfer = mintListArr.splice(0, distro.nFtsToAirdrop);
-        const mintsObj = mintsToTransfer.map(x => new MintTransfer(distro.wallet, x));
+        const mintsObj = mintsToTransfer.map(x => new MintTransfer(distro.wallet.trim(), x));
         mintsTransferList = _.concat(mintsTransferList, mintsObj);
     }
     const progressBar = new cliProgress.SingleBar(
@@ -314,6 +314,19 @@ export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: nu
             wallet: wallet.walletId,
             totalOwnedNftsCount: wallet.totalAmount,
             nFtsToAirdrop: wallet.totalAmount * amountPerMint
+        }
+        mintTfer.push(holderAcct);
+    }
+    return mintTfer;
+}
+
+export function formatNftDropByWallet(holderAccounts: string[], amountPerMint: number) : Distribution[] {
+    let mintTfer: Distribution[] = [];
+    for (var wallet of holderAccounts) {
+        const holderAcct: Distribution = {
+            wallet: wallet,
+            totalOwnedNftsCount: 1,
+            nFtsToAirdrop: amountPerMint
         }
         mintTfer.push(holderAcct);
     }
