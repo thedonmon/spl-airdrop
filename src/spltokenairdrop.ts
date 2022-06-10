@@ -13,7 +13,11 @@ import * as cliProgress from 'cli-progress';
 import _, { split } from 'lodash';
 import log from 'loglevel';
 import chalk from 'chalk';
-import { clusterApiUrl, PublicKey, Transaction, Keypair, Connection, Cluster, LAMPORTS_PER_SOL, ParsedAccountData, sendAndConfirmTransaction } from '@solana/web3.js';
+import { clusterApiUrl, PublicKey, Transaction,
+     Keypair, Connection, Cluster, 
+     LAMPORTS_PER_SOL, 
+     ParsedAccountData, sendAndConfirmTransaction,
+ } from '@solana/web3.js';
 import * as fs from 'fs';
 import { chunkItems, elapsed, getConnection, now, promiseRetry, timeout } from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
@@ -22,8 +26,9 @@ import { HolderAccount } from './types/holderaccounts';
 import { TransferError } from './types/errorTransfer';
 import { Transfer } from './types/transfer';
 import { Distribution } from './types/distribution';
+import { ParsedAccountDataType } from './types/accountType';
 
-export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250): Promise<any> {
+export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250, exclusionList: string[] = []): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     jsonData = JSON.parse(data);
@@ -33,16 +38,14 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
     const mint = jsonData.mint as string;
     let addresses = jsonData.wallets as string[];
     addresses = filterMarketPlacesByWallet(addresses);
+    if(exclusionList.length > 0) {
+        addresses = addresses.filter(item => !exclusionList.includes(item));
+    }
     if (simulate) {
         return addresses.map(x => ({ wallet: x, transferAmt: transferAmount }));
     }
 
-    const progressBar = new cliProgress.SingleBar(
-        {
-            format: 'Progress: [{bar}] {percentage}% | {value}/{total}',
-        },
-        cliProgress.Presets.shades_classic,
-    );
+    const progressBar = getProgressBar();
 
     progressBar.start(addresses.length, 0);
     const ownerAta = await getAssociatedTokenAddress(new PublicKey(mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
@@ -101,24 +104,23 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
         }));
     }
     progressBar.stop();
+    Promise.resolve();
 }
 
-export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, decimals: number, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50): Promise<any> {
+export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, decimals: number, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50, exclusionList: string[] = []): Promise<any> {
     var connection = getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     let holders: HolderAccount[] = filterMarketPlacesByHolders(holdersList);
     let decimalsToUse = getLamports(decimals);
     console.log(holders.length, holdersList.length);
+    if(exclusionList.length > 0) {
+        holders = holders.filter(item => !exclusionList.includes(item.walletId));
+    }
     if (simulate) {
         return holders.map(x => {return { wallet: x.walletId, transferAmt: (transferAmount * x.totalAmount * decimalsToUse) }});
     }
 
-    const progressBar = new cliProgress.SingleBar(
-        {
-            format: 'Progress: [{bar}] {percentage}% | {value}/{total}',
-        },
-        cliProgress.Presets.shades_classic,
-    );
+    const progressBar = getProgressBar();
     const ownerAta = await getAssociatedTokenAddress(tokenMint, new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
     const walletChunks = chunkItems(holders, batchSize);
     progressBar.start(holders.length, 0);
@@ -155,6 +157,7 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
         }));
     }
     progressBar.stop();
+    Promise.resolve();
 }
 
 
@@ -174,14 +177,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
         const mintsObj = mintsToTransfer.map(x => new MintTransfer(distro.wallet.trim(), x));
         mintsTransferList = _.concat(mintsTransferList, mintsObj);
     }
-    const progressBar = new cliProgress.SingleBar(
-        {
-            format: 'Progress: [{bar}] {percentage}% | {value}/{total} ',
-            barCompleteChar: '\u2588',
-            barIncompleteChar: '\u2591',
-        },
-        cliProgress.Presets.shades_classic,
-    );
+    const progressBar = getProgressBar();
     progressBar.start(mintsTransferList.length, 0);
 
     mintsTransferList = filterMarketPlaces(mintsTransferList);
@@ -230,6 +226,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
         }));
     }
     progressBar.stop();
+    Promise.resolve();
 }
 
 
@@ -245,14 +242,7 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
     if (simulate) {
         return distributionList;
     }
-    const progressBar = new cliProgress.SingleBar(
-        {
-            format: 'Progress: [{bar}] {percentage}% | {value}/{total} ',
-            barCompleteChar: '\u2588',
-            barIncompleteChar: '\u2591',
-        },
-        cliProgress.Presets.shades_classic,
-    );
+    const progressBar = getProgressBar();
     progressBar.start(distributionList.length, 0);
     const retryErrorsChunk = chunkItems(distributionList, batchSize);
     for (let retrtyErrorChunk of retryErrorsChunk) {
@@ -305,6 +295,7 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
 
     }
     progressBar.stop();
+    Promise.resolve();
 }
 
 export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: number) : Distribution[] {
@@ -319,6 +310,39 @@ export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: nu
     }
     return mintTfer;
 }
+
+export async function getTransferTransactionInfo(transactionHashes: string[], cluster: string = "devnet", rpcUrl: string | null = null) : Promise<string[]> {
+    let accountsToExclude: any[] = [];
+    const connection = getConnection(cluster, rpcUrl);
+    log.info(`Fetching ${transactionHashes.length} txns...`);
+    const parsedTransactions = await connection.getParsedTransactions(transactionHashes);
+    log.info(`Fetched ${transactionHashes.length} txns... parsing...`);
+    const progressBar = getProgressBar();
+    progressBar.start(parsedTransactions.length, 0);
+    for(const txn of parsedTransactions) {
+        const account = txn?.transaction.message.accountKeys.filter(x => !x.signer && x.pubkey.toBase58() !== "7YQ9zmi4Vt1QVSGji9TjP5yjTA6Aaaro8NAtxRT34UHK");
+        const accountTransfered = account ? account[0]: undefined
+        
+        if(accountTransfered) {
+            const accountInfo = await connection.getParsedAccountInfo(accountTransfered.pubkey);
+            const parsed = (accountInfo?.value?.data as ParsedAccountData)?.parsed as ParsedAccountDataType;
+            if(parsed) {
+                accountsToExclude.push(parsed.info.owner);
+            }   
+            else{
+                log.warn('Couldnt parse account info \n', accountTransfered.pubkey.toBase58());
+                
+                
+
+            }
+            progressBar.increment();
+        }
+    }
+    progressBar.stop();
+    return accountsToExclude;
+}
+
+
 
 export function formatNftDropByWallet(holderAccounts: string[], amountPerMint: number) : Distribution[] {
     let mintTfer: Distribution[] = [];
@@ -346,6 +370,16 @@ export function formatHoldersList(snapShotFilePath: string) : HolderAccount[] {
         holders.push(holderAcct);
     }
     return holders;
+}
+
+export function formatWalletList(snapShotFilePath: string) : string[] {
+    const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any;
+    let wallets: string[] = [];
+    for (var wallet in jsonData) {
+        wallets.push(wallet);
+    }
+    return wallets;
 }
 
 async function tryTransfer(toWallet: HolderAccount, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
@@ -428,6 +462,17 @@ function isNotMarketPlace(walletId: string): boolean {
         MarketPlaces.Solanart
     ]
     return !mktplaces.includes(walletId);
+}
+
+function getProgressBar() : cliProgress.SingleBar {
+    return new cliProgress.SingleBar(
+        {
+            format: 'Progress: [{bar}] {percentage}% | {value}/{total} ',
+            barCompleteChar: '\u2588',
+            barIncompleteChar: '\u2591',
+        },
+        cliProgress.Presets.shades_classic,
+    );
 }
 
 function getLamports(decimal: number): number {

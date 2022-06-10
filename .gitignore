@@ -46,3 +46,6 @@ holder*.json
 *transfer*.json
 *.txt
 /logs
+*exclu*.json
+*wallet*.json
+*snap*.json

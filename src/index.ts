@@ -4,7 +4,7 @@ import * as figlet from 'figlet';
 import log from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, formatNftDrop, formatNftDropByWallet } from './spltokenairdrop';
+import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, formatNftDrop, formatNftDropByWallet, getTransferTransactionInfo, formatWalletList } from './spltokenairdrop';
 import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
@@ -57,6 +57,7 @@ programCommand('airdrop-token-per-nft')
   .option('-h, --getholders <boolean>', 'Take snapshot', false)
   .option('-cm, --verifiedcreator <string>', 'Verified creator address')
   .option('-s, --simulate', 'Simuate airdrop')
+  .option('-ex, --exclusionlist <path>', 'path to addresses to excluse')
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
@@ -70,7 +71,7 @@ programCommand('airdrop-token-per-nft')
     );
     let start = now();
     clearLogFiles();
-    const { keypair, env, amount, decimals, mintid, airdroplist, getHolders, verifiedcreator, simulate, rpcUrl } = cmd.opts();
+    const { keypair, env, amount, decimals, mintid, airdroplist, getHolders, verifiedcreator, simulate, batchSize, exclusionlist, rpcUrl } = cmd.opts();
     console.log(cmd.opts());
     let holderAccounts: HolderAccount[] = [];
     const kp = loadWalletKey(keypair);
@@ -83,7 +84,11 @@ programCommand('airdrop-token-per-nft')
       const holders = fs.readFileSync(airdroplist, 'utf8');
       holderAccounts = JSON.parse(holders) as HolderAccount[];
     }
-    const result = await airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate);
+    let exclusionList: string[] = [];
+    if(exclusionlist) {
+      exclusionList = JSON.parse(fs.readFileSync(exclusionlist, 'utf-8'));
+    }
+    const result = await airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate, batchSize, exclusionList);
     log.info(result);
     elapsed(start, true); 
   });
@@ -227,6 +232,47 @@ programCommand('get-holders-cm', { requireWallet: false })
     log.log('Holders written to holders.json');
     elapsed(start, true); 
   });
+
+  programCommand('format-snapshot-to-wallets', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    let start = now();
+    const wallets = formatWalletList(snapshot);
+    const walletsStr = JSON.stringify(wallets);
+    fs.writeFileSync('wallets.json', walletsStr);
+    log.log('Wallets written to wallets.json');
+    elapsed(start, true); 
+  });
+
+  programCommand('exclude-address', { requireWallet: false })
+  .argument('<transactions>', 'transactions path')
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (transactions: string, _, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('get txn info', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const {env, rpcUrl} = cmd.opts();
+    let start = now();
+    const stringData = fs.readFileSync(transactions, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any;
+    const exclusions = await getTransferTransactionInfo(jsonData,env, rpcUrl);
+    const exclusionstr = JSON.stringify(exclusions);
+    fs.writeFileSync('exclusionlist.json', exclusionstr);
+    log.log('excluded accounts written to exclusionlist.json');
+    elapsed(start, true); 
+  });
+
+
 
   programCommand('format-mint-drop', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
