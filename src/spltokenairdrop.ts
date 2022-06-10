@@ -27,6 +27,7 @@ import { TransferError } from './types/errorTransfer';
 import { Transfer } from './types/transfer';
 import { Distribution } from './types/distribution';
 import { ParsedAccountDataType } from './types/accountType';
+import { TransactionInfoOptions } from './types/txnOptions';
 
 export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250, exclusionList: string[] = []): Promise<any> {
     let jsonData: any = {};
@@ -311,7 +312,7 @@ export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: nu
     return mintTfer;
 }
 
-export async function getTransferTransactionInfo(transactionHashes: string[], cluster: string = "devnet", rpcUrl: string | null = null) : Promise<string[]> {
+export async function getTransferTransactionInfo(transactionHashes: string[], cluster: string = "devnet", rpcUrl: string | null = null, txnOptions?: TransactionInfoOptions) : Promise<any[]> {
     let accountsToExclude: any[] = [];
     const connection = getConnection(cluster, rpcUrl);
     log.info(`Fetching ${transactionHashes.length} txns...`);
@@ -320,20 +321,22 @@ export async function getTransferTransactionInfo(transactionHashes: string[], cl
     const progressBar = getProgressBar();
     progressBar.start(parsedTransactions.length, 0);
     for(const txn of parsedTransactions) {
-        const account = txn?.transaction.message.accountKeys.filter(x => !x.signer && x.pubkey.toBase58() !== "7YQ9zmi4Vt1QVSGji9TjP5yjTA6Aaaro8NAtxRT34UHK");
+        const account = txnOptions ? (txnOptions.excludeAddress && txnOptions.excludeSigner ? txn?.transaction.message.accountKeys.filter(x => !x.signer && x.pubkey.toBase58() !== txnOptions.excludeAddress) : txn?.transaction.message.accountKeys) : txn?.transaction.message.accountKeys;
         const accountTransfered = account ? account[0]: undefined
         
         if(accountTransfered) {
             const accountInfo = await connection.getParsedAccountInfo(accountTransfered.pubkey);
             const parsed = (accountInfo?.value?.data as ParsedAccountData)?.parsed as ParsedAccountDataType;
             if(parsed) {
-                accountsToExclude.push(parsed.info.owner);
+                if(txnOptions && txnOptions.getInfo) {
+                    accountsToExclude.push(parsed);
+                }
+                else {
+                    accountsToExclude.push(parsed.info.owner);
+                }
             }   
             else{
                 log.warn('Couldnt parse account info \n', accountTransfered.pubkey.toBase58());
-                
-                
-
             }
             progressBar.increment();
         }
