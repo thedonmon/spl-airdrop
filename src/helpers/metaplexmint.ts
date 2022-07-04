@@ -132,7 +132,7 @@ async function getProgramAccounts(
 }
 
 
-export async function getAccountsByCreatorAddress(creatorAddress: PublicKey, connection: Connection) {
+export async function getAccountsByCreatorAddress(creatorAddress: PublicKey, connection: Connection): Promise<(string | Metadata)[][]> {
     const metadataAccounts = await getProgramAccounts(
         connection,
         'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s',
