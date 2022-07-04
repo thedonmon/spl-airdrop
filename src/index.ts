@@ -4,12 +4,11 @@ import * as figlet from 'figlet';
 import log, { LogLevelDesc } from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
-import { airdropNft, airdropToken, airdropTokenPerNft, retryErrors, formatHoldersList, formatNftDrop, formatNftDropByWallet, getTransferTransactionInfo, formatWalletList } from './spltokenairdrop';
+import * as spltokenairdrop from './spltokenairdrop';
 import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
-import path from 'path';
 import { LogFiles } from './helpers/constants';
 import _ from 'lodash';
 
@@ -48,10 +47,10 @@ programCommand('airdrop-token')
     }
     const kp = loadWalletKey(keypair);
     if (!simulate) {
-      await airdropToken(kp, airdroplist, amount, env, rpcUrl, false, batchSize, exclusionArr, mintAuthority, overrideBalanceCheck);
+      await spltokenairdrop.airdropToken(kp, airdroplist, amount, env, rpcUrl, false, batchSize, exclusionArr, mintAuthority, overrideBalanceCheck);
     }
     else {
-      const result = await airdropToken(kp, airdroplist, amount, env, rpcUrl, true, batchSize, exclusionArr, mintAuthority, overrideBalanceCheck);
+      const result = await spltokenairdrop.airdropToken(kp, airdroplist, amount, env, rpcUrl, true, batchSize, exclusionArr, mintAuthority, overrideBalanceCheck);
       log.log(result);
     }
     elapsed(start, true);
@@ -96,7 +95,7 @@ programCommand('airdrop-token-per-nft')
     if (exclusionlist) {
       exclusionList = JSON.parse(fs.readFileSync(exclusionlist, 'utf-8'));
     }
-    const result = await airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate, batchSize, exclusionList);
+    const result = await spltokenairdrop.airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate, batchSize, exclusionList);
     log.info(result);
     elapsed(start, true);
   });
@@ -123,11 +122,11 @@ programCommand('airdrop-nft')
     console.log(cmd.opts());
     const kp = loadWalletKey(keypair);
     if (!simulate) {
-      await airdropNft(kp, airdroplist, mintIds, env, rpcUrl, false, batchSize as number);
+      await spltokenairdrop.airdropNft(kp, airdroplist, mintIds, env, rpcUrl, false, batchSize as number);
 
     }
     else {
-      const result = await airdropNft(kp, airdroplist, mintIds, env, rpcUrl, true, batchSize as number);
+      const result = await spltokenairdrop.airdropNft(kp, airdroplist, mintIds, env, rpcUrl, true, batchSize as number);
       log.log(result);
     }
     elapsed(start, true);
@@ -157,11 +156,11 @@ programCommand('retry-errors')
     }
     if (!simulate) {
 
-      await retryErrors(kp, defaultErrorsPath, env, rpcUrl, false, batchSize as number);
+      await spltokenairdrop.retryErrors(kp, defaultErrorsPath, env, rpcUrl, false, batchSize as number);
 
     }
     else {
-      const result = await retryErrors(kp, defaultErrorsPath, env, rpcUrl, true, batchSize as number);
+      const result = await spltokenairdrop.retryErrors(kp, defaultErrorsPath, env, rpcUrl, true, batchSize as number);
       log.log(result);
     }
     elapsed(start, true);
@@ -234,7 +233,7 @@ programCommand('format-snapshot', { requireWallet: false })
       )
     );
     let start = now();
-    const holders = formatHoldersList(snapshot);
+    const holders = spltokenairdrop.formatHoldersList(snapshot);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('holdersList.json', holdersStr);
     log.log('Holders written to holders.json');
@@ -250,7 +249,7 @@ programCommand('format-snapshot-to-wallets', { requireWallet: false })
       )
     );
     let start = now();
-    const wallets = formatWalletList(snapshot);
+    const wallets = spltokenairdrop.formatWalletList(snapshot);
     const walletsStr = JSON.stringify(wallets);
     fs.writeFileSync('wallets.json', walletsStr);
     log.log('Wallets written to wallets.json');
@@ -273,7 +272,7 @@ programCommand('exclude-address', { requireWallet: false })
     let start = now();
     const stringData = fs.readFileSync(transactions, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
-    const exclusions = await getTransferTransactionInfo(jsonData, env, rpcUrl);
+    const exclusions = await spltokenairdrop.getTransferTransactionInfo(jsonData, env, rpcUrl);
     const exclusionstr = JSON.stringify(exclusions);
     fs.writeFileSync('exclusionlist.json', exclusionstr);
     log.log('excluded accounts written to exclusionlist.json');
@@ -295,7 +294,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     let start = now();
     const stringData = fs.readFileSync(snapshot, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
-    const holders = formatNftDropByWallet(jsonData, amount as number);
+    const holders = spltokenairdrop.formatNftDropByWallet(jsonData, amount as number);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('mintransfer.json', holdersStr);
     log.log('Holders written to holders.json');

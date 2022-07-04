@@ -1,19 +1,5 @@
-import { AnchorProvider, Provider } from "@project-serum/anchor";
-import {
-  Commitment,
-  Connection,
-  Finality,
-  PublicKey,
-  RpcResponseAndContext,
-  SendOptions,
-  SignatureResult,
-  SignatureStatus,
-  Signer,
-  SimulatedTransactionResponse,
-  Transaction,
-  TransactionInstruction,
-  TransactionSignature,
-} from "@solana/web3.js";
+import { AnchorProvider } from "@project-serum/anchor";
+import * as web3Js from "@solana/web3.js";
 import { sleep, TimeoutError } from "./utility";
 import { ProgramError } from "./anchorError";
 import log from 'loglevel';
@@ -30,26 +16,26 @@ async function promiseAllInOrder<T>(
 }
 
 export interface InstructionResult<A> {
-  instructions: TransactionInstruction[];
-  signers: Signer[];
+  instructions: web3Js.TransactionInstruction[];
+  signers: web3Js.Signer[];
   output: A;
 }
 
 export interface BigInstructionResult<A> {
-  instructions: TransactionInstruction[][];
-  signers: Signer[][];
+  instructions: web3Js.TransactionInstruction[][];
+  signers: web3Js.Signer[][];
   output: A;
 }
 
 export async function sendInstructions(
   idlErrors: Map<number, string>,
   provider: AnchorProvider,
-  instructions: TransactionInstruction[],
-  signers: Signer[],
-  payer: PublicKey = provider.wallet.publicKey,
-  commitment: Commitment = "confirmed"
+  instructions: web3Js.TransactionInstruction[],
+  signers: web3Js.Signer[],
+  payer: web3Js.PublicKey = provider.wallet.publicKey,
+  commitment: web3Js.Commitment = "confirmed"
 ): Promise<string> {
-  let tx = new Transaction();
+  let tx = new web3Js.Transaction();
   tx.recentBlockhash = (
     await provider.connection.getLatestBlockhash()
   ).blockhash;
@@ -86,10 +72,10 @@ function truthy<T>(value: T): value is Truthy<T> {
 export async function sendMultipleInstructions(
   idlErrors: Map<number, string>,
   provider: AnchorProvider,
-  instructionGroups: TransactionInstruction[][],
-  signerGroups: Signer[][],
-  payer?: PublicKey,
-  finality: Finality = "confirmed"
+  instructionGroups: web3Js.TransactionInstruction[][],
+  signerGroups: web3Js.Signer[][],
+  payer?: web3Js.PublicKey,
+  finality: web3Js.Finality = "confirmed"
 ): Promise<Iterable<string>> {
   const recentBlockhash = (
     await provider.connection.getLatestBlockhash("confirmed")
@@ -99,7 +85,7 @@ export async function sendMultipleInstructions(
       const signers = signerGroups[index];
       if (instructions.length > 0) {
         console.log(provider.wallet.publicKey.toBase58(), payer?.toBase58());
-        const tx = new Transaction({
+        const tx = new web3Js.Transaction({
           feePayer: payer || provider.wallet.publicKey,
           recentBlockhash,
         });
@@ -144,14 +130,14 @@ function getUnixTime(): number {
 }
 
 export const awaitTransactionSignatureConfirmation = async (
-  txid: TransactionSignature,
+  txid: web3Js.TransactionSignature,
   timeout: number,
-  connection: Connection,
-  commitment: Commitment = "recent",
+  connection: web3Js.Connection,
+  commitment: web3Js.Commitment = "recent",
   queryStatus = false,
-): Promise<SignatureStatus | null | any> => {
+): Promise<web3Js.SignatureStatus | null | any> => {
   let done = false;
-  let status: SignatureStatus | null | any = {
+  let status: web3Js.SignatureStatus | null | any = {
     slot: 0,
     confirmations: 0,
     err: null,
@@ -240,10 +226,10 @@ export const awaitTransactionSignatureConfirmation = async (
 };
 
 async function simulateTransaction(
-  connection: Connection,
-  transaction: Transaction,
-  commitment: Commitment
-): Promise<RpcResponseAndContext<SimulatedTransactionResponse>> {
+  connection: web3Js.Connection,
+  transaction: web3Js.Transaction,
+  commitment: web3Js.Commitment
+): Promise<web3Js.RpcResponseAndContext<web3Js.SimulatedTransactionResponse>> {
   transaction.recentBlockhash = (await connection.getLatestBlockhash(commitment)).blockhash;
   const res = await connection.simulateTransaction(transaction);
   if (res.value.err) {
@@ -262,10 +248,10 @@ const DEFAULT_TIMEOUT = 3 * 60 * 1000; // 3 minutes
   until it’s gone to a confirmed status to move on.
 */
 export async function sendAndConfirmWithRetry(
-  connection: Connection,
+  connection: web3Js.Connection,
   txn: Buffer,
-  sendOptions: SendOptions,
-  commitment: Commitment,
+  sendOptions: web3Js.SendOptions,
+  commitment: web3Js.Commitment,
   timeout = DEFAULT_TIMEOUT,
 ): Promise<{ txid: string }> {
   let done = false;
@@ -307,10 +293,10 @@ export async function sendAndConfirmWithRetry(
     if (err.timeout) {
       throw new TimeoutError(txid);
     }
-    let simulateResult: SimulatedTransactionResponse | null = null;
+    let simulateResult: web3Js.SimulatedTransactionResponse | null = null;
     try {
       simulateResult = (
-        await simulateTransaction(connection, Transaction.from(txn), "single")
+        await simulateTransaction(connection, web3Js.Transaction.from(txn), "single")
       ).value;
     } catch (e: any) {
       log.warn('Simulation failed', e, e?.message);

@@ -1,29 +1,11 @@
-import {
-    ASSOCIATED_TOKEN_PROGRAM_ID,
-    TOKEN_PROGRAM_ID,
-    getAssociatedTokenAddress,
-    getAccount,
-    getOrCreateAssociatedTokenAccount,
-    createTransferInstruction,
-    createCloseAccountInstruction,
-    mintTo,
-    getMint,
-    Mint,
-    Account,
-    createMintToInstruction
-} from '@solana/spl-token';
+import * as splToken from '@solana/spl-token';
 import * as cliProgress from 'cli-progress';
-import _, { split } from 'lodash';
+import _ from 'lodash';
 import log from 'loglevel';
 import chalk from 'chalk';
-import {
-    clusterApiUrl, PublicKey, Transaction,
-    Keypair, Connection, Cluster,
-    LAMPORTS_PER_SOL,
-    ParsedAccountData, sendAndConfirmTransaction, SendOptions, Commitment, TransactionInstruction,
-} from '@solana/web3.js';
+import * as web3Js from '@solana/web3.js';
 import * as fs from 'fs';
-import { chunkItems, elapsed, getConnection, now, promiseRetry, timeout } from './helpers/utility';
+import * as utility from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
 import { LogFiles, MarketPlaces } from './helpers/constants';
 import { HolderAccount } from './types/holderaccounts';
@@ -33,12 +15,13 @@ import { Distribution } from './types/distribution';
 import { ParsedAccountDataType } from './types/accountType';
 import { TransactionInfoOptions } from './types/txnOptions';
 import { sendAndConfirmWithRetry } from './helpers/transaction-helper';
+import { ITransferRequest, TransferErrorRequest, TransferMintRequest } from './types/transferRequest';
 
-export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250, exclusionList: string[] = [], mintIfAuthority: boolean = true, overrideBalanceCheck: boolean = false): Promise<any> {
+export async function airdropToken(keypair: web3Js.Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250, exclusionList: string[] = [], mintIfAuthority: boolean = true, overrideBalanceCheck: boolean = false): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     jsonData = JSON.parse(data);
-    var connection = getConnection(cluster, rpcUrl);
+    var connection = utility.getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     const mint = jsonData.mint as string;
     let addresses = jsonData.wallets as string[];
@@ -49,22 +32,22 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
     if (simulate) {
         return addresses.map(x => ({ wallet: x, transferAmt: transferAmount }));
     }
-    const mintPk = new PublicKey(mint);
-    const mintObj = await getMint(connection, mintPk, 'confirmed', TOKEN_PROGRAM_ID);
+    const mintPk = new web3Js.PublicKey(mint);
+    const mintObj = await splToken.getMint(connection, mintPk, 'confirmed', splToken.TOKEN_PROGRAM_ID);
     const amountToTransfer = getLamports(mintObj.decimals) * transferAmount;
     const progressBar = getProgressBar();
     progressBar.start(addresses.length, 0);
-    const ownerAta = await getAssociatedTokenAddress(mintPk, new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
-    const walletChunks = chunkItems(addresses, batchSize);
+    const ownerAta = await splToken.getAssociatedTokenAddress(mintPk, new web3Js.PublicKey(fromWallet), false, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID)
+    const walletChunks = utility.chunkItems(addresses, batchSize);
     overrideBalanceCheck ? log.warn(`Overriding balance check. Sending amount ${amountToTransfer}`) : null;
     for (let walletChunk of walletChunks) {
         await Promise.all(walletChunk.map(async (toWallet, index) => {
-            let start = now();
+            let start = utility.now();
             try {
-                const toWalletPk = new PublicKey(toWallet);
-                const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'confirmed', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+                const toWalletPk = new web3Js.PublicKey(toWallet);
+                const walletAta = await utility.promiseRetry(() => splToken.getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'confirmed', { skipPreflight: true, maxRetries: 100 }, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID));
                 if (walletAta.amount < amountToTransfer || overrideBalanceCheck) {
-                    await tryMintTo(mintObj, walletAta, mintPk, connection, keypair, amountToTransfer, ownerAta, fromWallet, toWalletPk, mintIfAuthority);
+                    await tryMintTo({ mintObj, walletAta, tokenMint: mintPk, connection, keypair, totalTransferAmt: amountToTransfer, ownerAta, fromWallet, toWallet: toWalletPk, mintIfAuthority });
                 }
                 else {
                     log.warn(chalk.yellow(`${toWallet} already has token ${mint}`));
@@ -89,7 +72,7 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
             }
             finally {
                 progressBar.increment();
-                elapsed(start, true, log);
+                utility.elapsed(start, true, log);
             }
         }));
     }
@@ -97,8 +80,8 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
     return Promise.resolve();
 }
 
-export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, decimals: number, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50, exclusionList: string[] = []): Promise<any> {
-    var connection = getConnection(cluster, rpcUrl);
+export async function airdropTokenPerNft(keypair: web3Js.Keypair, holdersList: HolderAccount[], tokenMint: web3Js.PublicKey, decimals: number, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50, exclusionList: string[] = []): Promise<any> {
+    var connection = utility.getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     let holders: HolderAccount[] = filterMarketPlacesByHolders(holdersList);
     let decimalsToUse = getLamports(decimals);
@@ -111,16 +94,16 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
     }
 
     const progressBar = getProgressBar();
-    const ownerAta = await getAssociatedTokenAddress(tokenMint, new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
-    const walletChunks = chunkItems(holders, batchSize);
+    const ownerAta = await splToken.getAssociatedTokenAddress(tokenMint, new web3Js.PublicKey(fromWallet), false, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID)
+    const walletChunks = utility.chunkItems(holders, batchSize);
     progressBar.start(holders.length, 0);
 
     for (let walletChunk of walletChunks) {
         await Promise.all(walletChunk.map(async (toWallet, index) => {
-            let start = now();
+            let start = utility.now();
             const totalTransferAmt = transferAmount * toWallet.totalAmount * decimalsToUse;
             try {
-                await tryTransfer(toWallet, tokenMint, connection, keypair, totalTransferAmt, ownerAta, fromWallet);
+                await tryTransfer({ toWallet, tokenMint, connection, keypair, totalTransferAmt, ownerAta, fromWallet });
             }
             catch (err: any) {
                 const message = `ERROR: Sending ${totalTransferAmt} of ${tokenMint.toBase58()} to ${toWallet.walletId} failed. \n`;
@@ -142,7 +125,7 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
             }
             finally {
                 progressBar.increment();
-                elapsed(start, true, log);
+                utility.elapsed(start, true, log);
             }
         }));
     }
@@ -151,13 +134,13 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
 }
 
 
-export async function airdropNft(keypair: Keypair, whitelistPath: string, mintlistPath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50): Promise<any> {
+export async function airdropNft(keypair: web3Js.Keypair, whitelistPath: string, mintlistPath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     const mintlist = fs.readFileSync(mintlistPath, "utf8");
     jsonData = JSON.parse(data);
     const mintListArr = JSON.parse(mintlist) as string[];
-    const connection = getConnection(cluster, rpcUrl);
+    const connection = utility.getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     const distributionList = jsonData.distributionList as any[];
     let mintsTransferList: MintTransfer[] = [];
@@ -175,13 +158,13 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
     if (simulate) {
         return mintsTransferList;
     }
-    const mintTransferChunks = chunkItems(mintsTransferList, batchSize);
+    const mintTransferChunks = utility.chunkItems(mintsTransferList, batchSize);
     for (let mintTransferChunk of mintTransferChunks) {
         await Promise.all(mintTransferChunk.map(async (mint, index) => {
-            let start = now();
+            let start = utility.now();
             try {
-                const ownerAta = await getAssociatedTokenAddress(new PublicKey(mint.mintId), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-                await tryTransferMint(mint, connection, keypair, 1, ownerAta, fromWallet);
+                const ownerAta = await splToken.getAssociatedTokenAddress(new web3Js.PublicKey(mint.mintId), new web3Js.PublicKey(fromWallet), false, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID);
+                await tryTransferMint({ toWallet: mint, connection, keypair, totalTransferAmt: 1, ownerAta, fromWallet });
             }
             catch (err: any) {
                 const message = `ERROR: Failed to send NFT ${mint.mintId} to ${mint.wallet}.`;
@@ -211,7 +194,7 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
             }
             finally {
                 progressBar.increment();
-                elapsed(start, true);
+                utility.elapsed(start, true);
             }
         }));
     }
@@ -220,11 +203,11 @@ export async function airdropNft(keypair: Keypair, whitelistPath: string, mintli
 }
 
 
-export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 5): Promise<any> {
+export async function retryErrors(keypair: web3Js.Keypair, errorJsonFilePath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 5): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(errorJsonFilePath, "utf8");
     jsonData = JSON.parse(data);
-    const connection = getConnection(cluster, rpcUrl);
+    const connection = utility.getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     const distributionList = jsonData as TransferError[];
 
@@ -234,15 +217,15 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
     }
     const progressBar = getProgressBar();
     progressBar.start(distributionList.length, 0);
-    const retryErrorsChunk = chunkItems(distributionList, batchSize);
+    const retryErrorsChunk = utility.chunkItems(distributionList, batchSize);
     for (let retrtyErrorChunk of retryErrorsChunk) {
         await Promise.all(retrtyErrorChunk.map(async (retryError, index) => {
-            let start = now();
+            let start = utility.now();
             try {
-                const ownerAta = await getAssociatedTokenAddress(new PublicKey(retryError.mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
-                const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, new PublicKey(retryError.mint), new PublicKey(retryError.wallet), false, 'confirmed', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
+                const ownerAta = await splToken.getAssociatedTokenAddress(new web3Js.PublicKey(retryError.mint), new web3Js.PublicKey(fromWallet), false, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID);
+                const walletAta = await utility.promiseRetry(() => splToken.getOrCreateAssociatedTokenAccount(connection, keypair, new web3Js.PublicKey(retryError.mint), new web3Js.PublicKey(retryError.wallet), false, 'confirmed', { skipPreflight: true, maxRetries: 100 }, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID));
                 if (walletAta.amount < retryError.transferAmount) {
-                    await tryTransferError(retryError, connection, keypair, ownerAta, fromWallet, retryError.isNFT);
+                    await tryTransferError({ toWallet: retryError, connection, keypair, ownerAta, fromWallet, closeAccounts: retryError.isNFT });
                 }
                 else {
                     log.warn(chalk.yellow(`${retryError.wallet} already has token ${retryError.mint}`));
@@ -279,7 +262,7 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
             }
             finally {
                 progressBar.increment();
-                elapsed(start, true, log);
+                utility.elapsed(start, true, log);
             }
         }));
 
@@ -303,7 +286,7 @@ export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: nu
 
 export async function getTransferTransactionInfo(transactionHashes: string[], cluster: string = "devnet", rpcUrl: string | null = null, txnOptions?: TransactionInfoOptions): Promise<any[]> {
     let accountsToExclude: any[] = [];
-    const connection = getConnection(cluster, rpcUrl);
+    const connection = utility.getConnection(cluster, rpcUrl);
     log.info(`Fetching ${transactionHashes.length} txns...`);
     const parsedTransactions = await connection.getParsedTransactions(transactionHashes);
     log.info(`Fetched ${transactionHashes.length} txns... parsing...`);
@@ -315,7 +298,7 @@ export async function getTransferTransactionInfo(transactionHashes: string[], cl
 
         if (accountTransfered) {
             const accountInfo = await connection.getParsedAccountInfo(accountTransfered.pubkey);
-            const parsed = (accountInfo?.value?.data as ParsedAccountData)?.parsed as ParsedAccountDataType;
+            const parsed = (accountInfo?.value?.data as web3Js.ParsedAccountData)?.parsed as ParsedAccountDataType;
             if (parsed) {
                 if (txnOptions && txnOptions.getInfo) {
                     accountsToExclude.push(parsed);
@@ -374,33 +357,45 @@ export function formatWalletList(snapShotFilePath: string): string[] {
     return wallets;
 }
 
-async function tryMintTo(mintObj: Mint, walletAta: Account, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey, toWallet: PublicKey, mintIfAuthority: boolean = true): Promise<any> {
-    let txnIx: TransactionInstruction;
+async function tryMintTo(request: TransferMintRequest<web3Js.PublicKey>): Promise<any> {
+    let { mintObj, 
+        walletAta, 
+        tokenMint, 
+        connection, 
+        keypair, 
+        totalTransferAmt, 
+        ownerAta, 
+        fromWallet, 
+        toWallet, 
+        mintIfAuthority = true } = request;
+    let txnIx: web3Js.TransactionInstruction;
     if (mintObj.mintAuthority?.toBase58() == keypair.publicKey.toBase58() && mintIfAuthority) {
-        txnIx = createMintToInstruction(mintObj.address, walletAta.address, keypair.publicKey, totalTransferAmt, undefined, TOKEN_PROGRAM_ID);
+        txnIx = splToken.createMintToInstruction(mintObj.address, walletAta.address, keypair.publicKey, totalTransferAmt!, undefined, splToken.TOKEN_PROGRAM_ID);
     }
     else {
-        txnIx = createTransferInstruction(ownerAta, walletAta.address, fromWallet, totalTransferAmt, [keypair], TOKEN_PROGRAM_ID);
+        txnIx = splToken.createTransferInstruction(ownerAta, walletAta.address, fromWallet, totalTransferAmt!, [keypair], splToken.TOKEN_PROGRAM_ID);
     }
-    const txn = new Transaction().add(txnIx);
+    const txn = new web3Js.Transaction().add(txnIx);
     txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     txn.sign(keypair);
     const signature = await sendAndConfrimInternal(connection, txn);
-    let message = `${mintIfAuthority ? 'Minted ' : 'Transferrred '} ${totalTransferAmt} of ${tokenMint.toBase58().substring(0, 6)} to ${toWallet.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
-    log.info(chalk.green(`${mintIfAuthority ? 'Minted ' : 'Transferrred '}`) + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint.toBase58().substring(0, 6)} to ${toWallet.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
+    let message = `${mintIfAuthority ? 'Minted ' : 'Transferrred '} ${totalTransferAmt} of ${tokenMint!.toBase58().substring(0, 6)} to ${toWallet.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green(`${mintIfAuthority ? 'Minted ' : 'Transferrred '}`) + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint!.toBase58().substring(0, 6)} to ${toWallet.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.TokenTransferTxt, message);
 }
 
-async function tryTransfer(toWallet: HolderAccount, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
-    const transfer = await prepTransfer(new PublicKey(toWallet.walletId), tokenMint, totalTransferAmt, connection, keypair, ownerAta, fromWallet, false);
+async function tryTransfer(request: ITransferRequest<HolderAccount>): Promise<any> {
+    let { toWallet, tokenMint, connection, keypair, totalTransferAmt, ownerAta, fromWallet } = request;
+    const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.walletId), tokenMint: tokenMint!, totalTransferAmt: totalTransferAmt!, connection, keypair, ownerAta, fromWallet }, false);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
-    let message = `Sent ${totalTransferAmt} of ${tokenMint.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
-    log.info(chalk.green('Sent ') + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
+    let message = `Sent ${totalTransferAmt} of ${tokenMint!.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green('Sent ') + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint!.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.TokenTransferTxt, message);
 }
 
-async function tryTransferError(toWallet: TransferError, connection: Connection, keypair: Keypair, ownerAta: PublicKey, fromWallet: PublicKey, closeAccounts?: boolean): Promise<any> {
-    const transfer = await prepTransfer(new PublicKey(toWallet.wallet), new PublicKey(toWallet.mint), toWallet.transferAmount, connection, keypair, ownerAta, fromWallet, closeAccounts);
+async function tryTransferError(request: TransferErrorRequest<TransferError>): Promise<any> {
+    let { toWallet, connection, keypair, ownerAta, fromWallet, closeAccounts } = request;
+    const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.wallet), tokenMint: new web3Js.PublicKey(toWallet.mint), totalTransferAmt: toWallet.transferAmount, connection, keypair, ownerAta, fromWallet }, closeAccounts);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
     let message = `Sent ${toWallet.transferAmount} of ${transfer.mint.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()} .https://solscan.io/tx/${signature.txid}  \n`;
     log.info(chalk.green('Sent ') + chalk.yellow(`${toWallet.transferAmount}`) + chalk.green(` of ${transfer.mint.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
@@ -408,8 +403,9 @@ async function tryTransferError(toWallet: TransferError, connection: Connection,
     return signature;
 }
 
-async function tryTransferMint(toWallet: MintTransfer, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
-    const transfer = await prepTransfer(new PublicKey(toWallet.wallet), new PublicKey(toWallet.mintId), totalTransferAmt, connection, keypair, ownerAta, fromWallet, true);
+async function tryTransferMint(request: ITransferRequest<MintTransfer>): Promise<any> {
+    let { toWallet, connection, keypair, totalTransferAmt, ownerAta, fromWallet } = request;
+    const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.wallet), tokenMint: new web3Js.PublicKey(toWallet.mintId), totalTransferAmt: totalTransferAmt!, connection, keypair, ownerAta, fromWallet}, true);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
     let message = `Sent ${totalTransferAmt} of ${transfer.mint.toBase58()} to ${transfer.destination}. https://solscan.io/tx/${signature.txid} \n`;
     log.info(chalk.green('Sent ') + chalk.yellow(` ${totalTransferAmt} `) + chalk.green(` of ${transfer.mint.toBase58().substring(0, 6)}.. to ${transfer.destination.toBase58().substring(0, 6)}.. `) + chalk.blue(` https://solscan.io/tx/${signature.txid} \n `));
@@ -417,14 +413,15 @@ async function tryTransferMint(toWallet: MintTransfer, connection: Connection, k
     return signature;
 }
 
-async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferAmt: number, connection: Connection, keypair: Keypair, ownerAta: PublicKey, fromWallet: PublicKey, createCloseIx: boolean = false): Promise<Transfer> {
-    const toWalletPk = new PublicKey(toWallet);
-    const mintPk = new PublicKey(mint);
-    const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
-    const txnIns = createTransferInstruction(ownerAta, walletAta.address, fromWallet, totalTransferAmt, [keypair], TOKEN_PROGRAM_ID);
-    const txn = new Transaction().add(txnIns);
+async function prepTransfer(request: ITransferRequest<web3Js.PublicKey>, createCloseIx: boolean = false): Promise<Transfer> {
+    let { toWallet, tokenMint, totalTransferAmt, connection, keypair, ownerAta, fromWallet } = request;
+    const toWalletPk = new web3Js.PublicKey(toWallet);
+    const mintPk = tokenMint!;
+    const walletAta = await utility.promiseRetry(() => splToken.getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID));
+    const txnIns = splToken.createTransferInstruction(ownerAta, walletAta.address, fromWallet, totalTransferAmt!, [keypair], splToken.TOKEN_PROGRAM_ID);
+    const txn = new web3Js.Transaction().add(txnIns);
     if (createCloseIx) {
-        const closeAccount = createCloseAccountInstruction(ownerAta, keypair.publicKey, keypair.publicKey, undefined, TOKEN_PROGRAM_ID);
+        const closeAccount = splToken.createCloseAccountInstruction(ownerAta, keypair.publicKey, keypair.publicKey, undefined, splToken.TOKEN_PROGRAM_ID);
         txn.add(closeAccount);
     }
     txn.sign(keypair);
@@ -435,13 +432,13 @@ async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferA
     }
 }
 
-async function sendAndConfrimInternal(connection: Connection, txn: Transaction,
-    sendOptions: SendOptions = {
+async function sendAndConfrimInternal(connection: web3Js.Connection, txn: web3Js.Transaction,
+    sendOptions: web3Js.SendOptions = {
         maxRetries: 0,
         skipPreflight: true,
         preflightCommitment: 'confirmed'
     },
-    commitment: Commitment = 'finalized'): Promise<{ txid: string }> {
+    commitment: web3Js.Commitment = 'finalized'): Promise<{ txid: string }> {
     const txnSerialized = txn.serialize();
     const signature = await sendAndConfirmWithRetry(connection, txnSerialized, sendOptions, commitment);
     return signature;
@@ -485,7 +482,7 @@ function getProgressBar(): cliProgress.SingleBar {
 
 function getLamports(decimal: number): number {
     if (decimal == 9) {
-        return LAMPORTS_PER_SOL;
+        return web3Js.LAMPORTS_PER_SOL;
     }
     else if (decimal == 0) {
         return 1;
@@ -523,7 +520,7 @@ function getLamports(decimal: number): number {
 
 }
 
-async function filterRecentTransactions(pk: PublicKey, filterAddress: string, connection: Connection): Promise<(string | undefined)[]> {
+async function filterRecentTransactions(pk: web3Js.PublicKey, filterAddress: string, connection: web3Js.Connection): Promise<(string | undefined)[]> {
     const txns = await connection.getConfirmedSignaturesForAddress2(pk, { limit: 1000 }, 'finalized');
     const txnsParsed = await connection.getParsedTransactions(txns.map(x => x.signature));
     const txnsP = txnsParsed.filter(x => x?.transaction.message.accountKeys!.filter(s => s.pubkey.toBase58() == filterAddress));
