@@ -26,7 +26,7 @@ programCommand('airdrop-token')
   .requiredOption('-am, --amount <number>', 'tokens to airdrop (will be converted to lamports based on mint decimal)', myParseInt, 1)
   .option('-ob, --override-balance-check <boolean>', 'send amount regardless of destination wallet balance', myParseBool, false)
   .option('-m, --mint-authority <boolean>', 'mint token to destination if keypair is mintauthority', myParseBool, true)
-  .option('-s, --simulate', 'Simulate airdrop')
+  .option('-s, --simulate', 'Simulate airdrop', myParseBool, false)
   .option('-b, --batch-size <number>', 'size to batch run txns', myParseInt, 50)
   .option(
     '-r, --rpc-url <string>',
@@ -61,15 +61,15 @@ programCommand('airdrop-token-per-nft')
   .requiredOption('-d, --decimals <number>', 'Decimals of the SPL token', myParseInt, 9)
   .requiredOption('-m, --mintid <string>', 'Airdrop token MintID')
   .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
-  .option('-h, --getholders <boolean>', 'Take snapshot', false)
+  .option('-h, --getholders <boolean>', 'Take snapshot', myParseBool, false)
   .option('-cm, --verifiedcreator <string>', 'Verified creator address')
-  .option('-s, --simulate', 'Simuate airdrop')
+  .option('-s, --simulate', 'Simuate airdrop', myParseBool, false)
   .option('-ex, --exclusionlist <path>', 'path to addresses to excluse')
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .option('-b, --batch-size <number>', 'Amount to batch transactions', '25')
+  .option('-b, --batch-size <number>', 'Amount to batch transactions', myParseInt, 25)
   .action(async (_, cmd) => {
     console.log(
       chalk.blue(
@@ -104,12 +104,12 @@ programCommand('airdrop-token-per-nft')
 programCommand('airdrop-nft')
   .requiredOption('-m, --mintIds <path>', 'Mint Ids of NFTs to Send')
   .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
-  .option('-s, --simulate <boolean>', 'Simuate airdrop')
+  .option('-s, --simulate <boolean>', 'Simuate airdrop', myParseBool, false)
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .option('-b, --batch-size <number>', 'Ammount to batch transactions', '5')
+  .option('-b, --batch-size <number>', 'Ammount to batch transactions', myParseInt, 5)
   .action(async (_, cmd) => {
     console.log(
       chalk.blue(
@@ -134,12 +134,12 @@ programCommand('airdrop-nft')
 
 programCommand('retry-errors')
   .option('-ep, --errorsPath <path>', 'Path to errors JSON file. Will default to errors file path if found')
-  .option('-s, --simulate <boolean>', 'Simuate airdrop')
+  .option('-s, --simulate <boolean>', 'Simuate airdrop', myParseBool, false)
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .option('-b, --batch-size <number>', 'Ammount to batch transactions', '5')
+  .option('-b, --batch-size <number>', 'Ammount to batch transactions', myParseInt, 5)
   .action(async (_, cmd) => {
     console.log(
       chalk.red(

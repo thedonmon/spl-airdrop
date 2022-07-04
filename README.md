@@ -13,6 +13,7 @@ If you enjoy using this tool send the creator a tip!
 - Airdrop SPL-tokens based on holdings
 - Get snapshot
 - Get hash list
+- Format files to spec based on actions taken (transfer nfts, airdrop tokens, etc.)
 - Retry errors for both types of transfers in one command.
 
 ## Installation
@@ -93,9 +94,6 @@ npx ts-node src/index.ts retry-errors \
 
 
 ## Upcoming features
-- [x] Ability to retry the errors file. 
-- [ ] Get token info
-- [ ] Get holders of an spl-token
 - [ ] UI to make this tool user friendly
 
 ## Development
