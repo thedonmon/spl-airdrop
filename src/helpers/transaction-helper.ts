@@ -14,8 +14,9 @@ import {
   TransactionInstruction,
   TransactionSignature,
 } from "@solana/web3.js";
-import { sleep } from "./utility";
+import { sleep, TimeoutError } from "./utility";
 import { ProgramError } from "./anchorError";
+import log from 'loglevel';
 
 async function promiseAllInOrder<T>(
   it: (() => Promise<T>)[]
@@ -147,10 +148,10 @@ export const awaitTransactionSignatureConfirmation = async (
   timeout: number,
   connection: Connection,
   commitment: Commitment = "recent",
-  queryStatus = false
-): Promise<SignatureStatus | null | void> => {
+  queryStatus = false,
+): Promise<SignatureStatus | null | any> => {
   let done = false;
-  let status: SignatureStatus | null | void = {
+  let status: SignatureStatus | null | any = {
     slot: 0,
     confirmations: 0,
     err: null,
@@ -159,14 +160,14 @@ export const awaitTransactionSignatureConfirmation = async (
   status = await new Promise(async (resolve, reject) => {
     setTimeout(() => {
       if (done) {
-        return;
+        return Promise.resolve();
       }
       done = true;
-      console.log("Rejecting for timeout...");
-      reject({ timeout: true });
+      log.debug("Rejecting for timeout...");
+      Promise.reject(new TimeoutError(txid));
     }, timeout);
     try {
-      console.log("COMMIMENT", commitment)
+      log.debug("COMMIMENT", commitment);
       subId = connection.onSignature(
         txid,
         (result: any, context: any) => {
@@ -177,18 +178,19 @@ export const awaitTransactionSignatureConfirmation = async (
             confirmations: 0,
           };
           if (result.err) {
-            console.log("Rejected via websocket", result.err);
+            log.error("Rejected via websocket", result.err);
             reject(status);
           } else {
-            console.log("Resolved via websocket", result);
+            log.debug("Resolved via websocket", result);
             resolve(status);
           }
         },
         commitment
       );
+      log.info('SUB ID>>> ', subId);
     } catch (e) {
       done = true;
-      console.error("WS error in setup", txid, e);
+      log.error("WS error in setup", txid, e);
     }
     while (!done && queryStatus) {
       // eslint-disable-next-line no-loop-func
@@ -197,18 +199,19 @@ export const awaitTransactionSignatureConfirmation = async (
           const signatureStatuses = await connection.getSignatureStatuses([
             txid,
           ]);
+          log.info('SIG STATUSS>>>', JSON.stringify(signatureStatuses, null, 2));
           status = signatureStatuses && signatureStatuses.value[0];
           if (!done) {
             if (!status) {
-              console.log("REST null result for", txid, status);
+              log.debug("REST null result for", txid, status);
             } else if (status.err) {
-              console.log("REST error for", txid, status);
+              log.error("REST error for", txid, status);
               done = true;
               reject(status.err);
             } else if (!status.confirmations && !status.confirmationStatus) {
-              console.log("REST no confirmations for", txid, status);
+              log.warn("REST no confirmations for", txid, status);
             } else {
-              console.log("REST confirmation for", txid, status);
+              log.debug("REST confirmation for", txid, status);
               if (
                 !status.confirmationStatus || status.confirmationStatus ==
                 commitment
@@ -220,7 +223,7 @@ export const awaitTransactionSignatureConfirmation = async (
           }
         } catch (e) {
           if (!done) {
-            console.log("REST connection error: txid", txid, e);
+            log.error("REST connection error: txid", txid, e);
           }
         }
       })();
@@ -229,12 +232,13 @@ export const awaitTransactionSignatureConfirmation = async (
   });
 
   //@ts-ignore
-  if (connection._signatureSubscriptions[subId]) {
+  if (connection._signatureSubscriptions && connection._signatureSubscriptions[subId]) {
+    log.info('removing listener');
     connection.removeSignatureListener(subId);
   }
   done = true;
-  console.log("Returning status ", status);
-  return status;
+  log.debug("Returning status ", status);
+  return Promise.resolve(status);
 };
 
 async function simulateTransaction(
@@ -242,25 +246,12 @@ async function simulateTransaction(
   transaction: Transaction,
   commitment: Commitment
 ): Promise<RpcResponseAndContext<SimulatedTransactionResponse>> {
-  // @ts-ignore
-  transaction.recentBlockhash = await connection._recentBlockhash(
-    // @ts-ignore
-    connection._disableBlockhashCaching
-  );
-
-  const signData = transaction.serializeMessage();
-  // @ts-ignore
-  const wireTransaction = transaction._serialize(signData);
-  const encodedTransaction = wireTransaction.toString("base64");
-  const config: any = { encoding: "base64", commitment };
-  const args = [encodedTransaction, config];
-
-  // @ts-ignore
-  const res = await connection._rpcRequest("simulateTransaction", args);
-  if (res.error) {
-    throw new Error("failed to simulate transaction: " + res.error.message);
+  transaction.recentBlockhash = (await connection.getLatestBlockhash(commitment)).blockhash;
+  const res = await connection.simulateTransaction(transaction);
+  if (res.value.err) {
+    throw new Error("failed to simulate transaction: " + JSON.stringify(res.value.err));
   }
-  return res.result;
+  return res;
 }
 
 const DEFAULT_TIMEOUT = 3 * 60 * 1000; // 3 minutes
@@ -277,16 +268,20 @@ export async function sendAndConfirmWithRetry(
   txn: Buffer,
   sendOptions: SendOptions,
   commitment: Commitment,
-  timeout = DEFAULT_TIMEOUT
+  timeout = DEFAULT_TIMEOUT,
 ): Promise<{ txid: string }> {
   let done = false;
   let slot = 0;
   const txid = await connection.sendRawTransaction(txn, sendOptions);
   const startTime = getUnixTime();
+  const blockhashResponse = await connection.getLatestBlockhashAndContext();
+  const lastValidBlockHeight = blockhashResponse.context.slot + 150;
+  let blockheight = await connection.getBlockHeight();
   (async () => {
-    while (!done && getUnixTime() - startTime < timeout) {
+    while (!done && getUnixTime() - startTime < timeout && blockheight < lastValidBlockHeight) {
       await connection.sendRawTransaction(txn, sendOptions);
       await sleep(500);
+      blockheight = await connection.getBlockHeight();
     }
   })();
   try {
@@ -295,34 +290,36 @@ export async function sendAndConfirmWithRetry(
       timeout,
       connection,
       commitment,
-      true
+      true,
     );
 
     if (!confirmation)
-      throw new Error("Timed out awaiting confirmation on transaction");
+      throw new TimeoutError(txid);
 
     if (confirmation.err) {
       const tx = await connection.getTransaction(txid);
-      console.error(tx?.meta?.logMessages?.join("\n"));
-      console.error(confirmation.err);
+      log.error(tx?.meta?.logMessages?.join("\n"));
+      log.error(confirmation.err);
       throw new Error("Transaction failed: Custom instruction error");
     }
 
     slot = confirmation?.slot || 0;
   } catch (err: any) {
-    console.error("Timeout Error caught", err);
+    log.error("Unexpected error caught", err, err?.message);
     if (err.timeout) {
-      throw new Error("Timed out awaiting confirmation on transaction");
+      throw new TimeoutError(txid);
     }
     let simulateResult: SimulatedTransactionResponse | null = null;
     try {
       simulateResult = (
         await simulateTransaction(connection, Transaction.from(txn), "single")
       ).value;
-    } catch (e) {}
+    } catch (e: any) {
+      log.warn('Simulation failed', e, e?.message);
+    }
     if (simulateResult && simulateResult.err) {
       if (simulateResult.logs) {
-        console.error(simulateResult.logs.join("\n"))
+        log.error(simulateResult.logs.join("\n"));
       }
     }
 
@@ -335,7 +332,7 @@ export async function sendAndConfirmWithRetry(
     done = true;
   }
 
-  console.log("Latency", txid, getUnixTime() - startTime);
+  log.debug("Latency", txid, getUnixTime() - startTime);
 
-  return { txid };
+  return Promise.resolve({ txid });
 }

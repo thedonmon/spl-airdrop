@@ -8,13 +8,27 @@ import log from 'loglevel';
 import { sendAndConfirmWithRetry } from './transaction-helper';
 
 
+export class TimeoutError extends Error {
+    message: string;
+    txid: string;
+    timeout: boolean = true;
+    constructor(txid: string) {
+      super();
+      this.message = `Timed out awaiting confirmation. Please confirm in the explorer: `;
+      this.txid = txid;
+    }
+}
+
 export function sleep(ms: number): Promise<any> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 export async function promiseRetry<T>(fn: () => Promise<T>, retries = 5, err?: any): Promise<T> {
-    console.log('trying transaction');
     if (err) {
+        if(err?.name && err.name === 'TokenOwnerOffCurveError') {
+            console.log('Will not retry. Address is a PDA. Specify allow off curve if this is intended');
+            return Promise.reject(new Error('TokenOwnerOffCurveError.  Specify allow off curve if this is intended'));
+        }
         console.log('retrying ', retries);
         console.log(err);
     }
@@ -43,7 +57,7 @@ export async function getSnapshot(mintIds: string[], rpcUrl: string | null = nul
     const mintIdChunks = chunkItems(mintIds);
     for (const chunk of mintIdChunks)
         await Promise.all(
-            chunk.map(async (item, index) => {
+            chunk.map(async (item) => {
                 let request: RpcRequest = {
                     jsonrpc: '2.0',
                     id: 1,
@@ -116,7 +130,7 @@ export function getConnection(cluster: string, rpcUrl: string | null): Connectio
 }
 
 export async function sendRawTransactionWithRetry(connection: Connection, txn: Buffer): Promise<string> {
-    const result = await sendAndConfirmWithRetry(connection, txn, { skipPreflight: true, maxRetries: 100 }, 'finalized', 120000);
+    const result = await sendAndConfirmWithRetry(connection, txn, { skipPreflight: true, maxRetries: 0 }, 'finalized', 120000);
     return result.txid;
 }
 

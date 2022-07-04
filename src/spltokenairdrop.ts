@@ -7,17 +7,21 @@ import {
     createTransferInstruction,
     createCloseAccountInstruction,
     mintTo,
-    getMint
+    getMint,
+    Mint,
+    Account,
+    createMintToInstruction
 } from '@solana/spl-token';
 import * as cliProgress from 'cli-progress';
 import _, { split } from 'lodash';
 import log from 'loglevel';
 import chalk from 'chalk';
-import { clusterApiUrl, PublicKey, Transaction,
-     Keypair, Connection, Cluster, 
-     LAMPORTS_PER_SOL, 
-     ParsedAccountData, sendAndConfirmTransaction,
- } from '@solana/web3.js';
+import {
+    clusterApiUrl, PublicKey, Transaction,
+    Keypair, Connection, Cluster,
+    LAMPORTS_PER_SOL,
+    ParsedAccountData, sendAndConfirmTransaction, SendOptions, Commitment, TransactionInstruction,
+} from '@solana/web3.js';
 import * as fs from 'fs';
 import { chunkItems, elapsed, getConnection, now, promiseRetry, timeout } from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
@@ -28,54 +32,39 @@ import { Transfer } from './types/transfer';
 import { Distribution } from './types/distribution';
 import { ParsedAccountDataType } from './types/accountType';
 import { TransactionInfoOptions } from './types/txnOptions';
+import { sendAndConfirmWithRetry } from './helpers/transaction-helper';
 
-export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250, exclusionList: string[] = []): Promise<any> {
+export async function airdropToken(keypair: Keypair, whitelistPath: string, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 250, exclusionList: string[] = [], mintIfAuthority: boolean = true, overrideBalanceCheck: boolean = false): Promise<any> {
     let jsonData: any = {};
     const data = fs.readFileSync(whitelistPath, "utf8");
     jsonData = JSON.parse(data);
     var connection = getConnection(cluster, rpcUrl);
-
     const fromWallet = keypair.publicKey;
     const mint = jsonData.mint as string;
     let addresses = jsonData.wallets as string[];
     addresses = filterMarketPlacesByWallet(addresses);
-    if(exclusionList.length > 0) {
+    if (exclusionList.length > 0) {
         addresses = addresses.filter(item => !exclusionList.includes(item));
     }
     if (simulate) {
         return addresses.map(x => ({ wallet: x, transferAmt: transferAmount }));
     }
-
+    const mintPk = new PublicKey(mint);
+    const mintObj = await getMint(connection, mintPk, 'confirmed', TOKEN_PROGRAM_ID);
+    const amountToTransfer = getLamports(mintObj.decimals) * transferAmount;
     const progressBar = getProgressBar();
-
     progressBar.start(addresses.length, 0);
-    const ownerAta = await getAssociatedTokenAddress(new PublicKey(mint), new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
+    const ownerAta = await getAssociatedTokenAddress(mintPk, new PublicKey(fromWallet), false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID)
     const walletChunks = chunkItems(addresses, batchSize);
-
+    overrideBalanceCheck ? log.warn(`Overriding balance check. Sending amount ${amountToTransfer}`) : null;
     for (let walletChunk of walletChunks) {
         await Promise.all(walletChunk.map(async (toWallet, index) => {
             let start = now();
             try {
                 const toWalletPk = new PublicKey(toWallet);
-                const mintPk = new PublicKey(mint);
-                const mintObj = await getMint(connection, mintPk, 'confirmed', TOKEN_PROGRAM_ID);
                 const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'confirmed', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
-                if (walletAta.amount < transferAmount) {
-                    let signature = '';
-                    if (mintObj.mintAuthority?.toBase58() == keypair.publicKey.toBase58()) {
-                        signature = await mintTo(connection, keypair, mintObj.address, walletAta.address, keypair, transferAmount, undefined, { commitment: 'confirmed', skipPreflight: true, maxRetries: 100, }, TOKEN_PROGRAM_ID);
-                    }
-                    else {
-                        const txnIns = createTransferInstruction(ownerAta, walletAta.address, fromWallet, transferAmount, [keypair], TOKEN_PROGRAM_ID);
-                        const txn = new Transaction().add(txnIns);
-                        txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
-                        txn.feePayer = fromWallet;
-                        signature = await connection.sendTransaction(txn, [keypair], { skipPreflight: true, maxRetries: 50 });
-                        await connection.confirmTransaction(signature, 'finalized');
-                    }
-                    let message = `Sent ${transferAmount} of ${mint} to ${toWallet}. Signature ${signature}. \n`;
-                    log.info(chalk.green(message));
-                    fs.appendFileSync('tokentransfers.txt', message);
+                if (walletAta.amount < amountToTransfer || overrideBalanceCheck) {
+                    await tryMintTo(mintObj, walletAta, mintPk, connection, keypair, amountToTransfer, ownerAta, fromWallet, toWalletPk, mintIfAuthority);
                 }
                 else {
                     log.warn(chalk.yellow(`${toWallet} already has token ${mint}`));
@@ -105,7 +94,7 @@ export async function airdropToken(keypair: Keypair, whitelistPath: string, tran
         }));
     }
     progressBar.stop();
-    Promise.resolve();
+    return Promise.resolve();
 }
 
 export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAccount[], tokenMint: PublicKey, decimals: number, transferAmount: number, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 50, exclusionList: string[] = []): Promise<any> {
@@ -114,11 +103,11 @@ export async function airdropTokenPerNft(keypair: Keypair, holdersList: HolderAc
     let holders: HolderAccount[] = filterMarketPlacesByHolders(holdersList);
     let decimalsToUse = getLamports(decimals);
     console.log(holders.length, holdersList.length);
-    if(exclusionList.length > 0) {
+    if (exclusionList.length > 0) {
         holders = holders.filter(item => !exclusionList.includes(item.walletId));
     }
     if (simulate) {
-        return holders.map(x => {return { wallet: x.walletId, transferAmt: (transferAmount * x.totalAmount * decimalsToUse) }});
+        return holders.map(x => { return { wallet: x.walletId, transferAmt: (transferAmount * x.totalAmount * decimalsToUse) } });
     }
 
     const progressBar = getProgressBar();
@@ -299,7 +288,7 @@ export async function retryErrors(keypair: Keypair, errorJsonFilePath: string, c
     Promise.resolve();
 }
 
-export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: number) : Distribution[] {
+export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: number): Distribution[] {
     let mintTfer: Distribution[] = [];
     for (var wallet of holderAccounts) {
         const holderAcct: Distribution = {
@@ -312,7 +301,7 @@ export function formatNftDrop(holderAccounts: HolderAccount[], amountPerMint: nu
     return mintTfer;
 }
 
-export async function getTransferTransactionInfo(transactionHashes: string[], cluster: string = "devnet", rpcUrl: string | null = null, txnOptions?: TransactionInfoOptions) : Promise<any[]> {
+export async function getTransferTransactionInfo(transactionHashes: string[], cluster: string = "devnet", rpcUrl: string | null = null, txnOptions?: TransactionInfoOptions): Promise<any[]> {
     let accountsToExclude: any[] = [];
     const connection = getConnection(cluster, rpcUrl);
     log.info(`Fetching ${transactionHashes.length} txns...`);
@@ -320,22 +309,22 @@ export async function getTransferTransactionInfo(transactionHashes: string[], cl
     log.info(`Fetched ${transactionHashes.length} txns... parsing...`);
     const progressBar = getProgressBar();
     progressBar.start(parsedTransactions.length, 0);
-    for(const txn of parsedTransactions) {
+    for (const txn of parsedTransactions) {
         const account = txnOptions ? (txnOptions.excludeAddress && txnOptions.excludeSigner ? txn?.transaction.message.accountKeys.filter(x => !x.signer && x.pubkey.toBase58() !== txnOptions.excludeAddress) : txn?.transaction.message.accountKeys) : txn?.transaction.message.accountKeys;
-        const accountTransfered = account ? account[0]: undefined
-        
-        if(accountTransfered) {
+        const accountTransfered = account ? account[0] : undefined
+
+        if (accountTransfered) {
             const accountInfo = await connection.getParsedAccountInfo(accountTransfered.pubkey);
             const parsed = (accountInfo?.value?.data as ParsedAccountData)?.parsed as ParsedAccountDataType;
-            if(parsed) {
-                if(txnOptions && txnOptions.getInfo) {
+            if (parsed) {
+                if (txnOptions && txnOptions.getInfo) {
                     accountsToExclude.push(parsed);
                 }
                 else {
                     accountsToExclude.push(parsed.info.owner);
                 }
-            }   
-            else{
+            }
+            else {
                 log.warn('Couldnt parse account info \n', accountTransfered.pubkey.toBase58());
             }
             progressBar.increment();
@@ -347,7 +336,7 @@ export async function getTransferTransactionInfo(transactionHashes: string[], cl
 
 
 
-export function formatNftDropByWallet(holderAccounts: string[], amountPerMint: number) : Distribution[] {
+export function formatNftDropByWallet(holderAccounts: string[], amountPerMint: number): Distribution[] {
     let mintTfer: Distribution[] = [];
     for (var wallet of holderAccounts) {
         const holderAcct: Distribution = {
@@ -360,7 +349,7 @@ export function formatNftDropByWallet(holderAccounts: string[], amountPerMint: n
     return mintTfer;
 }
 
-export function formatHoldersList(snapShotFilePath: string) : HolderAccount[] {
+export function formatHoldersList(snapShotFilePath: string): HolderAccount[] {
     const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
     let holders: HolderAccount[] = [];
@@ -375,7 +364,7 @@ export function formatHoldersList(snapShotFilePath: string) : HolderAccount[] {
     return holders;
 }
 
-export function formatWalletList(snapShotFilePath: string) : string[] {
+export function formatWalletList(snapShotFilePath: string): string[] {
     const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
     let wallets: string[] = [];
@@ -385,39 +374,50 @@ export function formatWalletList(snapShotFilePath: string) : string[] {
     return wallets;
 }
 
-async function tryTransfer(toWallet: HolderAccount, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
-
-    const transfer = await prepTransfer(new PublicKey(toWallet.walletId), tokenMint, totalTransferAmt, connection, keypair, ownerAta, fromWallet, false);
-    const signature = await connection.sendTransaction(transfer.txn, [keypair], { skipPreflight: true, maxRetries: 100 });
-    await connection.confirmTransaction(signature, 'finalized');
-    let message = `Sent ${totalTransferAmt} of ${tokenMint.toBase58()} to ${transfer.destination.toBase58()}. Signature ${signature}. \n`;
-    log.info(chalk.green('Sent ') + chalk.yellow(`${totalTransferAmt}`) + chalk.green(`of ${tokenMint.toBase58()} to ${transfer.destination.toBase58()} `) + chalk.blue(`Signature ${signature}. \n`));
+async function tryMintTo(mintObj: Mint, walletAta: Account, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey, toWallet: PublicKey, mintIfAuthority: boolean = true): Promise<any> {
+    let txnIx: TransactionInstruction;
+    if (mintObj.mintAuthority?.toBase58() == keypair.publicKey.toBase58() && mintIfAuthority) {
+        txnIx = createMintToInstruction(mintObj.address, walletAta.address, keypair.publicKey, totalTransferAmt, undefined, TOKEN_PROGRAM_ID);
+    }
+    else {
+        txnIx = createTransferInstruction(ownerAta, walletAta.address, fromWallet, totalTransferAmt, [keypair], TOKEN_PROGRAM_ID);
+    }
+    const txn = new Transaction().add(txnIx);
+    txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+    txn.sign(keypair);
+    const signature = await sendAndConfrimInternal(connection, txn);
+    let message = `${mintIfAuthority ? 'Minted ' : 'Transferrred '} ${totalTransferAmt} of ${tokenMint.toBase58().substring(0, 6)} to ${toWallet.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green(`${mintIfAuthority ? 'Minted ' : 'Transferrred '}`) + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint.toBase58().substring(0, 6)} to ${toWallet.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.TokenTransferTxt, message);
+}
 
+async function tryTransfer(toWallet: HolderAccount, tokenMint: PublicKey, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
+    const transfer = await prepTransfer(new PublicKey(toWallet.walletId), tokenMint, totalTransferAmt, connection, keypair, ownerAta, fromWallet, false);
+    const signature = await sendAndConfrimInternal(connection, transfer.txn);
+    let message = `Sent ${totalTransferAmt} of ${tokenMint.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green('Sent ') + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
+    fs.appendFileSync(LogFiles.TokenTransferTxt, message);
 }
 
 async function tryTransferError(toWallet: TransferError, connection: Connection, keypair: Keypair, ownerAta: PublicKey, fromWallet: PublicKey, closeAccounts?: boolean): Promise<any> {
     const transfer = await prepTransfer(new PublicKey(toWallet.wallet), new PublicKey(toWallet.mint), toWallet.transferAmount, connection, keypair, ownerAta, fromWallet, closeAccounts);
-    const signature = await connection.sendTransaction(transfer.txn, [keypair], { skipPreflight: true, maxRetries: 100 });
-    await connection.confirmTransaction(signature, 'finalized');
-    let message = `Sent ${toWallet.transferAmount} of ${transfer.mint.toBase58()} to ${transfer.destination.toBase58()}. Signature ${signature}. \n`;
-    log.info(chalk.green('Sent ') + chalk.yellow(`${toWallet.transferAmount}`) + chalk.green(` of ${transfer.mint.toBase58()} to ${transfer.destination.toBase58()} `) + chalk.blue(`Signature ${signature}. \n`));
+    const signature = await sendAndConfrimInternal(connection, transfer.txn);
+    let message = `Sent ${toWallet.transferAmount} of ${transfer.mint.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()} .https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green('Sent ') + chalk.yellow(`${toWallet.transferAmount}`) + chalk.green(` of ${transfer.mint.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.RetryTransferTxt, message);
     return signature;
 }
 
 async function tryTransferMint(toWallet: MintTransfer, connection: Connection, keypair: Keypair, totalTransferAmt: number, ownerAta: PublicKey, fromWallet: PublicKey): Promise<any> {
     const transfer = await prepTransfer(new PublicKey(toWallet.wallet), new PublicKey(toWallet.mintId), totalTransferAmt, connection, keypair, ownerAta, fromWallet, true);
-    const signature = await connection.sendTransaction(transfer.txn, [keypair], { skipPreflight: true, maxRetries: 100 });
-    await connection.confirmTransaction(signature, 'finalized');
-    let message = `Sent ${totalTransferAmt} of ${transfer.mint.toBase58()} to ${transfer.destination}. Signature ${signature}. \n`;
-    log.info(chalk.green('Sent ') + chalk.yellow(` ${totalTransferAmt} `) + chalk.green(` of ${transfer.mint.toBase58()} to ${transfer.destination.toBase58()} `) + chalk.blue(` Signature ${signature}. \n `));
+    const signature = await sendAndConfrimInternal(connection, transfer.txn);
+    let message = `Sent ${totalTransferAmt} of ${transfer.mint.toBase58()} to ${transfer.destination}. https://solscan.io/tx/${signature.txid} \n`;
+    log.info(chalk.green('Sent ') + chalk.yellow(` ${totalTransferAmt} `) + chalk.green(` of ${transfer.mint.toBase58().substring(0, 6)}.. to ${transfer.destination.toBase58().substring(0, 6)}.. `) + chalk.blue(` https://solscan.io/tx/${signature.txid} \n `));
     fs.appendFileSync(LogFiles.TransferNftTxt, message);
     return signature;
 }
 
 async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferAmt: number, connection: Connection, keypair: Keypair, ownerAta: PublicKey, fromWallet: PublicKey, createCloseIx: boolean = false): Promise<Transfer> {
-
     const toWalletPk = new PublicKey(toWallet);
     const mintPk = new PublicKey(mint);
     const walletAta = await promiseRetry(() => getOrCreateAssociatedTokenAccount(connection, keypair, mintPk, toWalletPk, false, 'finalized', { skipPreflight: true, maxRetries: 100 }, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID));
@@ -427,6 +427,7 @@ async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferA
         const closeAccount = createCloseAccountInstruction(ownerAta, keypair.publicKey, keypair.publicKey, undefined, TOKEN_PROGRAM_ID);
         txn.add(closeAccount);
     }
+    txn.sign(keypair);
     return {
         txn: txn,
         mint: mintPk,
@@ -434,13 +435,16 @@ async function prepTransfer(toWallet: PublicKey, mint: PublicKey, totalTransferA
     }
 }
 
-export async function findMintersAtPrice(price: number) { 
-    
-}
-
-
-async function getTransaction(mint: PublicKey, connection: Connection){
-    connection.getSignaturesForAddress(mint, {})
+async function sendAndConfrimInternal(connection: Connection, txn: Transaction,
+    sendOptions: SendOptions = {
+        maxRetries: 0,
+        skipPreflight: true,
+        preflightCommitment: 'confirmed'
+    },
+    commitment: Commitment = 'finalized'): Promise<{ txid: string }> {
+    const txnSerialized = txn.serialize();
+    const signature = await sendAndConfirmWithRetry(connection, txnSerialized, sendOptions, commitment);
+    return signature;
 }
 
 function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
@@ -448,7 +452,7 @@ function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
 }
 
 function filterMarketPlacesByHolders(transfers: HolderAccount[]): HolderAccount[] {
-    let arr =  _.filter(transfers, x => isNotMarketPlace(x.walletId));
+    let arr = _.filter(transfers, x => isNotMarketPlace(x.walletId));
     return arr;
 }
 
@@ -459,15 +463,16 @@ function filterMarketPlacesByWallet(wallets: string[]): string[] {
 function isNotMarketPlace(walletId: string): boolean {
     const mktplaces = [
         MarketPlaces.MagicEden,
+        MarketPlaces.MagicEden2,
         MarketPlaces.AlphaArt,
         MarketPlaces.DigitalEyes,
         MarketPlaces.ExchangeArt,
-        MarketPlaces.Solanart
+        MarketPlaces.Solanart,
     ]
     return !mktplaces.includes(walletId);
 }
 
-function getProgressBar() : cliProgress.SingleBar {
+function getProgressBar(): cliProgress.SingleBar {
     return new cliProgress.SingleBar(
         {
             format: 'Progress: [{bar}] {percentage}% | {value}/{total} ',
