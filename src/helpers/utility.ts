@@ -2,10 +2,11 @@ import { HolderAccount } from '../types/holderaccounts';
 import { RpcResponse } from '../types/rpcresponse';
 import { RpcRequest } from '../types/rpcrequest';
 import axios from 'axios';
-import { Cluster, clusterApiUrl, Connection, Keypair } from '@solana/web3.js';
+import { Cluster, clusterApiUrl, Connection, Keypair, ParsedAccountData } from '@solana/web3.js';
 import * as fs from 'fs';
 import log from 'loglevel';
 import { sendAndConfirmWithRetry } from './transaction-helper';
+import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
 
 export class TimeoutError extends Error {
@@ -13,9 +14,9 @@ export class TimeoutError extends Error {
     txid: string;
     timeout: boolean = true;
     constructor(txid: string) {
-      super();
-      this.message = `Timed out awaiting confirmation. Please confirm in the explorer: `;
-      this.txid = txid;
+        super();
+        this.message = `Timed out awaiting confirmation. Please confirm in the explorer: `;
+        this.txid = txid;
     }
 }
 
@@ -25,7 +26,7 @@ export function sleep(ms: number): Promise<any> {
 
 export async function promiseRetry<T>(fn: () => Promise<T>, retries = 5, err?: any): Promise<T> {
     if (err) {
-        if(err?.name && err.name === 'TokenOwnerOffCurveError') {
+        if (err?.name && err.name === 'TokenOwnerOffCurveError') {
             console.log('Will not retry. Address is a PDA. Specify allow off curve if this is intended');
             return Promise.reject(new Error('TokenOwnerOffCurveError.  Specify allow off curve if this is intended'));
         }
@@ -52,44 +53,34 @@ export const chunkItems = <T>(items: T[], chunkSize?: number) =>
         return chunks;
     }, []);
 
-export async function getSnapshot(mintIds: string[], rpcUrl: string | null = null): Promise<HolderAccount[]> {
+export async function getSnapshot(mintIds: string[], rpcUrl: string | null = null, cluster: string = 'devnet'): Promise<HolderAccount[]> {
     let accounts: HolderAccount[] = [];
+    const connection = getConnection(cluster, rpcUrl);
     const mintIdChunks = chunkItems(mintIds);
     for (const chunk of mintIdChunks)
         await Promise.all(
             chunk.map(async (item) => {
-                let request: RpcRequest = {
-                    jsonrpc: '2.0',
-                    id: 1,
-                    method: 'getProgramAccounts',
-                    params: [
-                        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
-                        {
-                            encoding: "jsonParsed",
-                            filters: [
-                                {
-                                    dataSize: 165
-                                },
-                                {
-                                    memcmp: {
-                                        offset: 0,
-                                        bytes: `${item}`
-                                    }
-                                }
-                            ]
-                        }
-                    ]
+                let filter = {
+                    memcmp: {
+                        offset: 0,
+                        bytes: item,
+                    },
                 };
-                await timeout(500, 0, false);
-                let rpc = rpcUrl ?? 'https://pentacle.genesysgo.net/';
-                let response = await axios.post<RpcResponse>(rpc, request);
-                if (response.status == 200) {
-                    const responseData = response.data;
-                    let mainAccount = responseData.result.filter(x => x.account.data.parsed.info.tokenAmount.uiAmount > 0)[0];
+                let filter2 = {
+                    dataSize: 165,
+                };
+                let getFilter = [filter, filter2];
+                let programAccountsConfig = { filters: getFilter, encoding: "jsonParsed" };
+                let tokenResult = await connection.getParsedProgramAccounts(
+                    TOKEN_PROGRAM_ID,
+                    programAccountsConfig
+                );
+                if (tokenResult && tokenResult.length > 0) {
+                    let mainAccount = tokenResult.filter(x => (x.account.data as ParsedAccountData).parsed.info.tokenAmount.uiAmount > 0)[0];
                     if (mainAccount) {
                         let holder: HolderAccount = {
-                            walletId: mainAccount.account.data.parsed.info.owner,
-                            totalAmount: mainAccount.account.data.parsed.info.tokenAmount.uiAmount,
+                            walletId: (mainAccount.account.data as ParsedAccountData).parsed.info.owner,
+                            totalAmount: (mainAccount.account.data as ParsedAccountData).parsed.info.tokenAmount.uiAmount,
                             mintIds: [item]
                         };
                         let tryFindAccount = accounts.find(x => x.walletId == holder.walletId);
