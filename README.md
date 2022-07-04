@@ -39,7 +39,7 @@ The airdrop tool is quite resource intensive on the solana RPC so using a custom
 Use this tool to airdrop a specific set of NFTs to holders. You can
 Airdrop expects a list of mintids, and then a list of wallets to airdrop the nfts to. You can use the `get-holders-cm` command to get the hashlist. This will generate a hashlist for you. 
 The file format to pass as _path to airdrop list_ can be found in `examples/nftdistrolist.json`. This is the only format that will be accepted. Use this file to add the wallet and how many NFTs from the hashlist generated they should receive.
-
+**You can also use this as a bulk transfer tool to mass send NFTs**
 
 ```sh
 npx ts-node src/index.ts airdrop-nft \
