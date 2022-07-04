@@ -187,7 +187,6 @@ export const awaitTransactionSignatureConfirmation = async (
         },
         commitment
       );
-      log.info('SUB ID>>> ', subId);
     } catch (e) {
       done = true;
       log.error("WS error in setup", txid, e);
@@ -199,7 +198,6 @@ export const awaitTransactionSignatureConfirmation = async (
           const signatureStatuses = await connection.getSignatureStatuses([
             txid,
           ]);
-          log.info('SIG STATUSS>>>', JSON.stringify(signatureStatuses, null, 2));
           status = signatureStatuses && signatureStatuses.value[0];
           if (!done) {
             if (!status) {
@@ -230,7 +228,7 @@ export const awaitTransactionSignatureConfirmation = async (
       await sleep(2000);
     }
   });
-
+  //Old connection objects probably can remove.
   //@ts-ignore
   if (connection._signatureSubscriptions && connection._signatureSubscriptions[subId]) {
     log.info('removing listener');
@@ -255,14 +253,14 @@ async function simulateTransaction(
 }
 
 const DEFAULT_TIMEOUT = 3 * 60 * 1000; // 3 minutes
-  /*
-    A validator has up to 120s to accept the transaction and send it into a block.
-    If it doesn’t happen within that timeframe, your transaction is dropped and you’ll need 
-    to send the transaction again. You can get the transaction signature and periodically 
-    Ping the network for that transaction signature. If you never get anything back, 
-    that means it’s definitely been dropped. If you do get a response back, you can keep pinging 
-    until it’s gone to a confirmed status to move on.
-  */
+/*
+  A validator has up to 120s to accept the transaction and send it into a block.
+  If it doesn’t happen within that timeframe, your transaction is dropped and you’ll need 
+  to send the transaction again. You can get the transaction signature and periodically 
+  Ping the network for that transaction signature. If you never get anything back, 
+  that means it’s definitely been dropped. If you do get a response back, you can keep pinging 
+  until it’s gone to a confirmed status to move on.
+*/
 export async function sendAndConfirmWithRetry(
   connection: Connection,
   txn: Buffer,
