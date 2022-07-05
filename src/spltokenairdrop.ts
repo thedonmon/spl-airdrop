@@ -34,7 +34,7 @@ export async function airdropToken(keypair: web3Js.Keypair, whitelistPath: strin
     }
     const mintPk = new web3Js.PublicKey(mint);
     const mintObj = await splToken.getMint(connection, mintPk, 'confirmed', splToken.TOKEN_PROGRAM_ID);
-    const amountToTransfer = getLamports(mintObj.decimals) * transferAmount;
+    const amountToTransfer = utility.getLamports(mintObj.decimals) * transferAmount;
     const progressBar = getProgressBar();
     progressBar.start(addresses.length, 0);
     const ownerAta = await splToken.getAssociatedTokenAddress(mintPk, new web3Js.PublicKey(fromWallet), false, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID)
@@ -62,13 +62,7 @@ export async function airdropToken(keypair: web3Js.Keypair, whitelistPath: strin
                     message: message,
                     error: err.message
                 };
-                log.error(chalk.red(message));
-                fs.appendFileSync(LogFiles.TokenTransferErrorsTxt, message);
-                const errorString = fs.readFileSync(LogFiles.TransferErrorJson, 'utf-8');
-                const jsonErrors = JSON.parse(errorString) as TransferError[];
-                jsonErrors.push(errorMsg);
-                const writeJson = JSON.stringify(jsonErrors);
-                fs.writeFileSync(LogFiles.TransferErrorJson, writeJson);
+                handleError(errorMsg, LogFiles.TransferErrorJson, LogFiles.TokenTransferErrorsTxt);
             }
             finally {
                 progressBar.increment();
@@ -84,7 +78,7 @@ export async function airdropTokenPerNft(keypair: web3Js.Keypair, holdersList: H
     var connection = utility.getConnection(cluster, rpcUrl);
     const fromWallet = keypair.publicKey;
     let holders: HolderAccount[] = filterMarketPlacesByHolders(holdersList);
-    let decimalsToUse = getLamports(decimals);
+    let decimalsToUse = utility.getLamports(decimals);
     console.log(holders.length, holdersList.length);
     if (exclusionList.length > 0) {
         holders = holders.filter(item => !exclusionList.includes(item.walletId));
@@ -115,13 +109,7 @@ export async function airdropTokenPerNft(keypair: web3Js.Keypair, holdersList: H
                     message: message,
                     error: err.message
                 };
-                log.error(chalk.red(message));
-                fs.appendFileSync(LogFiles.TokenTransferNftTxt, message);
-                const errorString = fs.readFileSync(LogFiles.TransferErrorJson, 'utf-8');
-                const jsonErrors = JSON.parse(errorString) as TransferError[];
-                jsonErrors.push(errorMsg);
-                const writeJson = JSON.stringify(jsonErrors);
-                fs.writeFileSync(LogFiles.TransferErrorJson, writeJson);
+                handleError(errorMsg, LogFiles.TransferErrorJson, LogFiles.TokenTransferNftTxt);
             }
             finally {
                 progressBar.increment();
@@ -176,21 +164,7 @@ export async function airdropNft(keypair: web3Js.Keypair, whitelistPath: string,
                     error: err.message,
                     isNFT: true,
                 };
-                log.error(chalk.red(message));
-                fs.appendFileSync(LogFiles.TransferNftErrorsTxt, message);
-                const errorString = fs.readFileSync(LogFiles.TransferErrorJson, 'utf-8');
-                if (errorString) {
-                    const jsonErrors = JSON.parse(errorString) as TransferError[];
-                    jsonErrors.push(errorMsg);
-                    const writeJson = JSON.stringify(jsonErrors);
-                    fs.writeFileSync(LogFiles.TransferErrorJson, writeJson);
-
-                }
-                else {
-                    let newError = [errorMsg];
-                    const writeJson = JSON.stringify(newError);
-                    fs.writeFileSync(LogFiles.TransferErrorJson, writeJson);
-                }
+                handleError(errorMsg, LogFiles.TransferErrorJson, LogFiles.TransferNftErrorsTxt);
             }
             finally {
                 progressBar.increment();
@@ -202,6 +176,27 @@ export async function airdropNft(keypair: web3Js.Keypair, whitelistPath: string,
     Promise.resolve();
 }
 
+
+function handleError(errorMsg: TransferError, transferErrorJsonPath: string, transferErrorTxtPath: string): void {
+    log.error(chalk.red(errorMsg.message));
+    fs.appendFileSync(LogFiles.TransferNftErrorsTxt, errorMsg.message!);
+    if (!fs.existsSync(transferErrorJsonPath)) {
+        fs.writeFileSync(transferErrorJsonPath, JSON.stringify([]));
+    }
+    const errorString = fs.readFileSync(transferErrorTxtPath, 'utf-8');
+    if (errorString) {
+        const jsonErrors = JSON.parse(errorString) as TransferError[];
+        jsonErrors.push(errorMsg);
+        const writeJson = JSON.stringify(jsonErrors);
+        fs.writeFileSync(transferErrorJsonPath, writeJson);
+
+    }
+    else {
+        let newError = [errorMsg];
+        const writeJson = JSON.stringify(newError);
+        fs.writeFileSync(transferErrorJsonPath, writeJson);
+    }
+}
 
 export async function retryErrors(keypair: web3Js.Keypair, errorJsonFilePath: string, cluster: string = "devnet", rpcUrl: string | null = null, simulate: boolean = false, batchSize: number = 5): Promise<any> {
     let jsonData: any = {};
@@ -241,24 +236,7 @@ export async function retryErrors(keypair: web3Js.Keypair, errorJsonFilePath: st
                     message: message,
                     error: err.message
                 };
-                log.error(chalk.red(message));
-                fs.appendFileSync(LogFiles.RetryTransferErrorTxt, message);
-                if (!fs.existsSync(LogFiles.RetryTransferErrorJson)) {
-                    fs.writeFileSync(LogFiles.RetryTransferErrorJson, JSON.stringify([]));
-                }
-                const errorString = fs.readFileSync(LogFiles.RetryTransferErrorJson, 'utf-8');
-                if (errorString) {
-                    const jsonErrors = JSON.parse(errorString) as TransferError[];
-                    jsonErrors.push(errorMsg);
-                    const writeJson = JSON.stringify(jsonErrors);
-                    fs.writeFileSync(LogFiles.RetryTransferErrorJson, writeJson);
-
-                }
-                else {
-                    let newError = [errorMsg];
-                    const writeJson = JSON.stringify(newError);
-                    fs.writeFileSync(LogFiles.RetryTransferErrorJson, writeJson);
-                }
+                handleError(errorMsg, LogFiles.RetryTransferErrorJson, LogFiles.RetryTransferErrorTxt);
             }
             finally {
                 progressBar.increment();
@@ -357,16 +335,16 @@ export function formatWalletList(snapShotFilePath: string): string[] {
     return wallets;
 }
 
-async function tryMintTo(request: TransferMintRequest<web3Js.PublicKey>): Promise<any> {
-    let { mintObj, 
-        walletAta, 
-        tokenMint, 
-        connection, 
-        keypair, 
-        totalTransferAmt, 
-        ownerAta, 
-        fromWallet, 
-        toWallet, 
+async function tryMintTo(request: TransferMintRequest<web3Js.PublicKey>): Promise<{txid: string}> {
+    let { mintObj,
+        walletAta,
+        tokenMint,
+        connection,
+        keypair,
+        totalTransferAmt,
+        ownerAta,
+        fromWallet,
+        toWallet,
         mintIfAuthority = true } = request;
     let txnIx: web3Js.TransactionInstruction;
     if (mintObj.mintAuthority?.toBase58() == keypair.publicKey.toBase58() && mintIfAuthority) {
@@ -382,18 +360,20 @@ async function tryMintTo(request: TransferMintRequest<web3Js.PublicKey>): Promis
     let message = `${mintIfAuthority ? 'Minted ' : 'Transferrred '} ${totalTransferAmt} of ${tokenMint!.toBase58().substring(0, 6)} to ${toWallet.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
     log.info(chalk.green(`${mintIfAuthority ? 'Minted ' : 'Transferrred '}`) + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint!.toBase58().substring(0, 6)} to ${toWallet.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.TokenTransferTxt, message);
+    return signature;
 }
 
-async function tryTransfer(request: ITransferRequest<HolderAccount>): Promise<any> {
+async function tryTransfer(request: ITransferRequest<HolderAccount>): Promise<{txid: string}> {
     let { toWallet, tokenMint, connection, keypair, totalTransferAmt, ownerAta, fromWallet } = request;
     const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.walletId), tokenMint: tokenMint!, totalTransferAmt: totalTransferAmt!, connection, keypair, ownerAta, fromWallet }, false);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
     let message = `Sent ${totalTransferAmt} of ${tokenMint!.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
     log.info(chalk.green('Sent ') + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint!.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.TokenTransferTxt, message);
+    return signature;
 }
 
-async function tryTransferError(request: TransferErrorRequest<TransferError>): Promise<any> {
+async function tryTransferError(request: TransferErrorRequest<TransferError>): Promise<{txid: string}> {
     let { toWallet, connection, keypair, ownerAta, fromWallet, closeAccounts } = request;
     const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.wallet), tokenMint: new web3Js.PublicKey(toWallet.mint), totalTransferAmt: toWallet.transferAmount, connection, keypair, ownerAta, fromWallet }, closeAccounts);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
@@ -403,9 +383,9 @@ async function tryTransferError(request: TransferErrorRequest<TransferError>): P
     return signature;
 }
 
-async function tryTransferMint(request: ITransferRequest<MintTransfer>): Promise<any> {
+async function tryTransferMint(request: ITransferRequest<MintTransfer>): Promise<{txid: string}> {
     let { toWallet, connection, keypair, totalTransferAmt, ownerAta, fromWallet } = request;
-    const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.wallet), tokenMint: new web3Js.PublicKey(toWallet.mintId), totalTransferAmt: totalTransferAmt!, connection, keypair, ownerAta, fromWallet}, true);
+    const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.wallet), tokenMint: new web3Js.PublicKey(toWallet.mintId), totalTransferAmt: totalTransferAmt!, connection, keypair, ownerAta, fromWallet }, true);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
     let message = `Sent ${totalTransferAmt} of ${transfer.mint.toBase58()} to ${transfer.destination}. https://solscan.io/tx/${signature.txid} \n`;
     log.info(chalk.green('Sent ') + chalk.yellow(` ${totalTransferAmt} `) + chalk.green(` of ${transfer.mint.toBase58().substring(0, 6)}.. to ${transfer.destination.toBase58().substring(0, 6)}.. `) + chalk.blue(` https://solscan.io/tx/${signature.txid} \n `));
@@ -478,52 +458,4 @@ function getProgressBar(): cliProgress.SingleBar {
         },
         cliProgress.Presets.shades_classic,
     );
-}
-
-function getLamports(decimal: number): number {
-    if (decimal == 9) {
-        return web3Js.LAMPORTS_PER_SOL;
-    }
-    else if (decimal == 0) {
-        return 1;
-    }
-    else {
-        let amount = 0;
-        switch (decimal) {
-            case 8:
-                amount = 1_000_000_00;
-                break;
-            case 7:
-                amount = 1_000_000_0;
-                break;
-            case 6:
-                amount = 1_000_000;
-                break;
-            case 5:
-                amount = 1_000_00;
-                break;
-            case 4:
-                amount = 1_000_0;
-                break;
-            case 3:
-                amount = 1_000;
-                break;
-            case 2:
-                amount = 1_00;
-                break;
-            case 1:
-                amount = 1_0;
-                break;
-        }
-        return amount;
-    }
-
-}
-
-async function filterRecentTransactions(pk: web3Js.PublicKey, filterAddress: string, connection: web3Js.Connection): Promise<(string | undefined)[]> {
-    const txns = await connection.getConfirmedSignaturesForAddress2(pk, { limit: 1000 }, 'finalized');
-    const txnsParsed = await connection.getParsedTransactions(txns.map(x => x.signature));
-    const txnsP = txnsParsed.filter(x => x?.transaction.message.accountKeys!.filter(s => s.pubkey.toBase58() == filterAddress));
-    const filteredFound = txnsP.flatMap(x => x?.transaction.message.accountKeys.flatMap(k => k.pubkey.toBase58())).filter(s => s == filterAddress);
-    return filteredFound;
 }
