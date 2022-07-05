@@ -1,3 +1,6 @@
+/**
+ * Credits: @metaplex 
+ */
 import { BinaryReader, BinaryWriter, deserializeUnchecked } from 'borsh';
 import base58 from 'bs58';
 import { PublicKey } from '@solana/web3.js';

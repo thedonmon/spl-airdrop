@@ -5,6 +5,17 @@ import log from 'loglevel';
 import { sendAndConfirmWithRetry } from './transaction-helper';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 
+export async function promiseAllInOrder<T>(
+    it: (() => Promise<T>)[]
+  ): Promise<Iterable<T>> {
+    let ret: T[] = [];
+    for (const i of it) {
+      ret.push(await i());
+    }
+  
+    return ret;
+  }
+  
 
 export class TimeoutError extends Error {
     message: string;
@@ -191,4 +202,10 @@ export async function filterRecentTransactions(pk: web3Js.PublicKey, filterAddre
     const txnsP = txnsParsed.filter(x => x?.transaction.message.accountKeys!.filter(s => s.pubkey.toBase58() == filterAddress));
     const filteredFound = txnsP.flatMap(x => x?.transaction.message.accountKeys.flatMap(k => k.pubkey.toBase58())).filter(s => s == filterAddress);
     return filteredFound;
+}
+
+export type Truthy<T> = T extends false | "" | 0 | null | undefined ? never : T; // from lodash
+
+export function truthy<T>(value: T): value is Truthy<T> {
+  return !!value;
 }

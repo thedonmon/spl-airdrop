@@ -1,3 +1,6 @@
+/**
+ * Any marketplace escrow addresses should be added here. 
+ */
 export class MarketPlaces {
     public static AlphaArt: string = '4pUQS4Jo2dsfWzt3VgHXy3H6RYnEDd11oWPiaM2rdAPw';
     public static DigitalEyes: string = 'F4ghBzHFNgJxV4wEQDchU5i7n4XWWMBSaq7CuswGiVsr';

@@ -1,65 +1,23 @@
-import { Connection, clusterApiUrl, PublicKey, Cluster, AccountInfo } from '@solana/web3.js';
+import * as web3Js from '@solana/web3.js';
 import log from 'loglevel';
-import bs58 from 'bs58';
 import cliSpinners from 'cli-spinners';
 import ora from 'ora';
 import { decodeMetadata, Metadata } from './metaplexschema';
 
 export type AccountAndPubkey = {
     pubkey: string;
-    account: AccountInfo<Buffer>;
+    account: web3Js.AccountInfo<Buffer>;
 };
 
 const MAX_NAME_LENGTH = 32;
 const MAX_URI_LENGTH = 200;
 const MAX_SYMBOL_LENGTH = 10;
 const MAX_CREATOR_LEN = 32 + 1 + 1;
-const MAX_CREATOR_LIMIT = 5;
-const MAX_DATA_SIZE = 4 + MAX_NAME_LENGTH + 4 + MAX_SYMBOL_LENGTH + 4 + MAX_URI_LENGTH + 2 + 1 + 4 + MAX_CREATOR_LIMIT * MAX_CREATOR_LEN;
-const MAX_METADATA_LEN = 1 + 32 + 32 + MAX_DATA_SIZE + 1 + 1 + 9 + 172;
-const CREATOR_ARRAY_START = 1 + 32 + 32 + 4 + MAX_NAME_LENGTH + 4 + MAX_URI_LENGTH + 4 + MAX_SYMBOL_LENGTH + 2 + 1 + 4;
+const TOKEN_METADATA_PROGRAM = new web3Js.PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
+const CANDY_MACHINE_V2_PROGRAM = new web3Js.PublicKey('cndy3Z4yapfJBmL3ShUp5exZKqR3z33thTzeNMm2gRZ');
 
-const TOKEN_METADATA_PROGRAM = new PublicKey('metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s');
-const CANDY_MACHINE_V2_PROGRAM = new PublicKey('cndy3Z4yapfJBmL3ShUp5exZKqR3z33thTzeNMm2gRZ');
-
-async function getMintAddresses(firstCreatorAddress: PublicKey, connection: Connection): Promise<string[]> {
-    try {
-        const spinner = ora({ text: 'Calling rpc to get mints, please wait', spinner: cliSpinners.material });
-        spinner.color = 'yellow';
-        spinner.start();
-        const metadataAccounts = await connection.getProgramAccounts(
-            TOKEN_METADATA_PROGRAM,
-            {
-                // The mint address is located at byte 33 and lasts for 32 bytes.
-                dataSlice: { offset: 33, length: 32 },
-
-                filters: [
-                    // Only get Metadata accounts.
-                    { dataSize: MAX_METADATA_LEN },
-
-                    // Filter using the first creator.
-                    {
-                        memcmp: {
-                            offset: CREATOR_ARRAY_START,
-                            bytes: firstCreatorAddress.toBase58(),
-                        },
-                    },
-                ],
-            },
-        );
-        spinner.succeed();
-        return metadataAccounts.map((metadataAccountInfo) => (
-            bs58.encode(metadataAccountInfo.account.data)
-        ));
-    }
-    catch (err: any) {
-        log.error(err);
-        throw err;
-    }
-};
-
-async function getCandyMachineCreator(candyMachine: PublicKey): Promise<[PublicKey, number]> {
-    const creatorTuple = PublicKey.findProgramAddress(
+async function getCandyMachineCreator(candyMachine: web3Js.PublicKey): Promise<[web3Js.PublicKey, number]> {
+    const creatorTuple = web3Js.PublicKey.findProgramAddress(
         [Buffer.from('candy_machine'), candyMachine.toBuffer()],
         CANDY_MACHINE_V2_PROGRAM,
     )
@@ -67,8 +25,8 @@ async function getCandyMachineCreator(candyMachine: PublicKey): Promise<[PublicK
 }
 
 export async function getCandyMachineMints(candyMachineId: string, env: string = 'mainnet-beta', rpcUrl: string | null = null): Promise<string[]> {
-    const connection = rpcUrl != null ? new Connection(rpcUrl) : new Connection('https://ssc-dao.genesysgo.net');
-    const candyMachinePk = new PublicKey(candyMachineId);
+    const connection = rpcUrl != null ? new web3Js.Connection(rpcUrl) : new web3Js.Connection('https://ssc-dao.genesysgo.net');
+    const candyMachinePk = new web3Js.PublicKey(candyMachineId);
     log.info(`Getting mints for candy machine ${candyMachineId}`);
     const candyMachineCreator = await getCandyMachineCreator(candyMachinePk);
     log.info(candyMachineCreator[0].toBase58(), candyMachineCreator);
@@ -78,7 +36,7 @@ export async function getCandyMachineMints(candyMachineId: string, env: string =
 }
 
 async function getProgramAccounts(
-    connection: Connection,
+    connection: web3Js.Connection,
     programId: String,
     configOrCommitment?: any,
 ): Promise<Array<AccountAndPubkey>> {
@@ -111,7 +69,7 @@ async function getProgramAccounts(
     //console.log(unsafeRes)
     const data = (
         unsafeRes.result as Array<{
-            account: AccountInfo<[string, string]>;
+            account: web3Js.AccountInfo<[string, string]>;
             pubkey: string;
         }>
     ).map(item => {
@@ -123,7 +81,7 @@ async function getProgramAccounts(
                 lamports: item.account.lamports,
                 // TODO: maybe we can do it in lazy way? or just use string
                 owner: item.account.owner,
-            } as AccountInfo<Buffer>,
+            } as web3Js.AccountInfo<Buffer>,
             pubkey: item.pubkey,
         };
     });
@@ -132,10 +90,10 @@ async function getProgramAccounts(
 }
 
 
-export async function getAccountsByCreatorAddress(creatorAddress: PublicKey, connection: Connection): Promise<(string | Metadata)[][]> {
+export async function getAccountsByCreatorAddress(creatorAddress: web3Js.PublicKey, connection: web3Js.Connection): Promise<(string | Metadata)[][]> {
     const metadataAccounts = await getProgramAccounts(
         connection,
-        'metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s',
+        TOKEN_METADATA_PROGRAM.toBase58(),
         {
             filters: [
                 {
@@ -172,8 +130,8 @@ export async function getAccountsByCreatorAddress(creatorAddress: PublicKey, con
 }
 
 export async function getAddressesByCreatorAddress(
-    candyMachineAddr: PublicKey,
-    connection: Connection,
+    candyMachineAddr: web3Js.PublicKey,
+    connection: web3Js.Connection,
 ): Promise<string[]> {
     try {
         const spinner = ora({ text: 'Calling rpc to get mints, please wait', spinner: cliSpinners.material });
@@ -184,7 +142,7 @@ export async function getAddressesByCreatorAddress(
             connection,
         );
         const addresses = accountsByCreatorAddress.map(it => {
-            return new PublicKey((it[0] as Metadata).mint).toBase58();
+            return new web3Js.PublicKey((it[0] as Metadata).mint).toBase58();
         });
         spinner.succeed();
         return addresses;

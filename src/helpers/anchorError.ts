@@ -1,3 +1,6 @@
+/**
+ * Credits: @metaplex
+ */
 const LangErrorCode = {
     // Instructions.
     InstructionMissing: 100,

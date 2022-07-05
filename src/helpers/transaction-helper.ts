@@ -1,129 +1,9 @@
-import { AnchorProvider } from "@project-serum/anchor";
+/**
+ * Credits: @strata-protocol
+ */
 import * as web3Js from "@solana/web3.js";
 import { sleep, TimeoutError } from "./utility";
-import { ProgramError } from "./anchorError";
 import log from 'loglevel';
-
-async function promiseAllInOrder<T>(
-  it: (() => Promise<T>)[]
-): Promise<Iterable<T>> {
-  let ret: T[] = [];
-  for (const i of it) {
-    ret.push(await i());
-  }
-
-  return ret;
-}
-
-export interface InstructionResult<A> {
-  instructions: web3Js.TransactionInstruction[];
-  signers: web3Js.Signer[];
-  output: A;
-}
-
-export interface BigInstructionResult<A> {
-  instructions: web3Js.TransactionInstruction[][];
-  signers: web3Js.Signer[][];
-  output: A;
-}
-
-export async function sendInstructions(
-  idlErrors: Map<number, string>,
-  provider: AnchorProvider,
-  instructions: web3Js.TransactionInstruction[],
-  signers: web3Js.Signer[],
-  payer: web3Js.PublicKey = provider.wallet.publicKey,
-  commitment: web3Js.Commitment = "confirmed"
-): Promise<string> {
-  let tx = new web3Js.Transaction();
-  tx.recentBlockhash = (
-    await provider.connection.getLatestBlockhash()
-  ).blockhash;
-  tx.feePayer = payer || provider.wallet.publicKey;
-  tx.add(...instructions);
-  if (signers.length > 0) {
-    tx.partialSign(...signers);
-  }
-  tx = await provider.wallet.signTransaction(tx);
-
-  try {
-    const { txid } = await sendAndConfirmWithRetry(
-      provider.connection,
-      tx.serialize(),
-      {
-        skipPreflight: true,
-      },
-      commitment
-    );
-    return txid;
-  } catch (e) {
-    console.error(e);
-    const wrappedE = ProgramError.parse(e, idlErrors);
-    throw wrappedE == null ? e : wrappedE;
-  }
-}
-
-type Truthy<T> = T extends false | "" | 0 | null | undefined ? never : T; // from lodash
-
-function truthy<T>(value: T): value is Truthy<T> {
-  return !!value;
-}
-
-export async function sendMultipleInstructions(
-  idlErrors: Map<number, string>,
-  provider: AnchorProvider,
-  instructionGroups: web3Js.TransactionInstruction[][],
-  signerGroups: web3Js.Signer[][],
-  payer?: web3Js.PublicKey,
-  finality: web3Js.Finality = "confirmed"
-): Promise<Iterable<string>> {
-  const recentBlockhash = (
-    await provider.connection.getLatestBlockhash("confirmed")
-  ).blockhash;
-  const txns = instructionGroups
-    .map((instructions, index) => {
-      const signers = signerGroups[index];
-      if (instructions.length > 0) {
-        console.log(provider.wallet.publicKey.toBase58(), payer?.toBase58());
-        const tx = new web3Js.Transaction({
-          feePayer: payer || provider.wallet.publicKey,
-          recentBlockhash,
-        });
-        tx.add(...instructions);
-        if (signers.length > 0) {
-          tx.partialSign(...signers);
-        }
-
-        return tx;
-      }
-    })
-    .filter(truthy);
-
-  const txnsSigned = (await provider.wallet.signAllTransactions(txns)).map(
-    (tx) => tx.serialize()
-  );
-
-  console.log("Sending multiple transactions...");
-  try {
-    return await promiseAllInOrder(
-      txnsSigned.map((txn) => async () => {
-        const { txid } = await sendAndConfirmWithRetry(
-          provider.connection,
-          txn,
-          {
-            skipPreflight: true,
-          },
-          finality
-        );
-        return txid;
-      })
-    );
-  } catch (e) {
-    console.error(e);
-    const wrappedE = ProgramError.parse(e, idlErrors);
-    throw wrappedE == null ? e : wrappedE;
-  }
-}
 
 function getUnixTime(): number {
   return new Date().valueOf() / 1000;
@@ -239,14 +119,7 @@ async function simulateTransaction(
 }
 
 const DEFAULT_TIMEOUT = 3 * 60 * 1000; // 3 minutes
-/*
-  A validator has up to 120s to accept the transaction and send it into a block.
-  If it doesn’t happen within that timeframe, your transaction is dropped and you’ll need 
-  to send the transaction again. You can get the transaction signature and periodically 
-  Ping the network for that transaction signature. If you never get anything back, 
-  that means it’s definitely been dropped. If you do get a response back, you can keep pinging 
-  until it’s gone to a confirmed status to move on.
-*/
+
 export async function sendAndConfirmWithRetry(
   connection: web3Js.Connection,
   txn: Buffer,
