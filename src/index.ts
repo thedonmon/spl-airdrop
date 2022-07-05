@@ -47,10 +47,10 @@ programCommand('airdrop-token')
     }
     const kp = loadWalletKey(keypair);
     if (!simulate) {
-      await spltokenairdrop.airdropToken(kp, airdroplist, amount, env, rpcUrl, false, batchSize, exclusionArr, mintAuthority, overrideBalanceCheck);
+      await spltokenairdrop.airdropToken({ keypair: kp, whitelistPath: airdroplist, transferAmount: amount, cluster: env, rpcUrl, simulate: false, batchSize, exclusionList: exclusionArr, mintIfAuthority: mintAuthority, overrideBalanceCheck });
     }
     else {
-      const result = await spltokenairdrop.airdropToken(kp, airdroplist, amount, env, rpcUrl, true, batchSize, exclusionArr, mintAuthority, overrideBalanceCheck);
+      const result = await spltokenairdrop.airdropToken({ keypair: kp, whitelistPath: airdroplist, transferAmount: amount, cluster: env, rpcUrl, simulate: true, batchSize, exclusionList: exclusionArr, mintIfAuthority: mintAuthority, overrideBalanceCheck });
       log.log(result);
     }
     elapsed(start, true);
@@ -95,7 +95,7 @@ programCommand('airdrop-token-per-nft')
     if (exclusionlist) {
       exclusionList = JSON.parse(fs.readFileSync(exclusionlist, 'utf-8'));
     }
-    const result = await spltokenairdrop.airdropTokenPerNft(kp, holderAccounts, mintPk, decimals, amount, env, rpcUrl, simulate, batchSize, exclusionList);
+    const result = await spltokenairdrop.airdropTokenPerNft({ keypair: kp, holdersList: holderAccounts, tokenMint: mintPk, decimals, transferAmount: amount, cluster: env, rpcUrl, simulate, batchSize, exclusionList });
     log.info(result);
     elapsed(start, true);
   });
@@ -122,11 +122,11 @@ programCommand('airdrop-nft')
     console.log(cmd.opts());
     const kp = loadWalletKey(keypair);
     if (!simulate) {
-      await spltokenairdrop.airdropNft(kp, airdroplist, mintIds, env, rpcUrl, false, batchSize as number);
+      await spltokenairdrop.airdropNft({ keypair: kp, whitelistPath: airdroplist, mintlistPath: mintIds, cluster: env, rpcUrl, simulate: false, batchSize: batchSize as number });
 
     }
     else {
-      const result = await spltokenairdrop.airdropNft(kp, airdroplist, mintIds, env, rpcUrl, true, batchSize as number);
+      const result = await spltokenairdrop.airdropNft({ keypair: kp, whitelistPath: airdroplist, mintlistPath: mintIds, cluster: env, rpcUrl, simulate: true, batchSize: batchSize as number });
       log.log(result);
     }
     elapsed(start, true);
