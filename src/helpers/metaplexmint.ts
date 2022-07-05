@@ -1,3 +1,6 @@
+/**
+ * Credits: @metaplex
+ */
 import * as web3Js from '@solana/web3.js';
 import log from 'loglevel';
 import cliSpinners from 'cli-spinners';
@@ -25,7 +28,7 @@ async function getCandyMachineCreator(candyMachine: web3Js.PublicKey): Promise<[
 }
 
 export async function getCandyMachineMints(candyMachineId: string, env: string = 'mainnet-beta', rpcUrl: string | null = null): Promise<string[]> {
-    const connection = rpcUrl != null ? new web3Js.Connection(rpcUrl) : new web3Js.Connection('https://ssc-dao.genesysgo.net');
+    const connection = rpcUrl != null ? new web3Js.Connection(rpcUrl) : new web3Js.Connection(web3Js.clusterApiUrl(env));
     const candyMachinePk = new web3Js.PublicKey(candyMachineId);
     log.info(`Getting mints for candy machine ${candyMachineId}`);
     const candyMachineCreator = await getCandyMachineCreator(candyMachinePk);

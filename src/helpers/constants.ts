@@ -11,6 +11,9 @@ export class MarketPlaces {
     public static Misc: string = '67REPFbTve6crS4tK8BihF97YCJAnnLeanvdSbDXqfsb';
 }
 
+/**
+ * Log file paths, add here to avoid hardcoding.
+ */
 export class LogFiles {
     public static RetryTransferTxt: string = 'logs/retrytransfer.txt';
     public static TransferNftErrorsTxt: string = 'logs/transfer-nft-errors.txt';
