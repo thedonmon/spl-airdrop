@@ -251,7 +251,7 @@ programCommand('get-holders-cm', { requireWallet: false })
     const nftClient = new NftClient(mp);
     const mints = await nftClient.findAllByCandyMachine(candyMachinePk, version);
     if (mints) {
-      const mintData = includeMetadata ? mints.map(x => { return { mint: x.mint.toBase58(), name: x.metadata.name, image: x.metadata.image, attributes: x.metadata.attributes }}) : mints.map(x => x.mint.toBase58());
+      const mintData = includeMetadata ? mints.map(x => { return { mint: x.mint.toBase58(), name: x.name, uri: x.uri }}) : mints.map(x => x.mint.toBase58());
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${candymachineid}-mints.json`, jsonMints);
       if (holders) {
@@ -270,33 +270,34 @@ programCommand('get-holders-cm', { requireWallet: false })
   });
 
   programCommand('get-mints-creator', { requireWallet: false })
-  .argument('<verifiedCreatorId>', 'Verified Creator Id')
-  .option('-v, --version <number>', 'candy machine version (default 2)', myParseInt, 2)
+  .argument('<actualCreatorId>', 'Creator Id')
+  .option('-p, --creatorPosition <number>', 'position in creators array (zero based indexing)', myParseInt, 0)
   .option('-h, --holders <boolean>', 'get holders list', myParseBool, false)
   .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', myParseBool, false)
   .option(
     '-r, --rpc-url <string>',
     'custom rpc url since this is a heavy command',
   )
-  .action(async (verifiedCreatorId: string, options, cmd) => {
+  .action(async (actualCreatorId: string, options, cmd) => {
     console.log(
       chalk.blue(
         figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })
       )
     );
-    const { env, version, holders, includeMetadata, rpcUrl } = cmd.opts();
+    const { env, creatorPosition, holders, includeMetadata, rpcUrl } = cmd.opts();
     let start = now();
     const connection = rpcUrl != null ? new web3Js.Connection(rpcUrl) : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
     const mp = new Metaplex(connection, {
       cluster: env as web3Js.Cluster
     });
-    const candyMachinePk = new web3Js.PublicKey(verifiedCreatorId);
+    const candyMachinePk = new web3Js.PublicKey(actualCreatorId);
     const nftClient = new NftClient(mp);
-    const mints = await nftClient.findAllByCreator(candyMachinePk, version);
+    const mints = await nftClient.findAllByCreator(candyMachinePk, creatorPosition);
     if (mints) {
-      const mintData = includeMetadata ? mints.map(x => { return { mint: x.mint.toBase58(), name: x.metadata.name, image: x.metadata.image, attributes: x.metadata.attributes }}) : mints.map(x => x.mint.toBase58());
+      console.log('MINTS>>>', mints);
+      const mintData = includeMetadata ? mints.map(x => { return { mint: x.mint.toBase58(), name: x.metadata.name, uri: x.uri }}) : mints.map(x => x.mint.toBase58());
       const jsonMints = JSON.stringify(mintData);
-      fs.writeFileSync(`${verifiedCreatorId}-mints.json`, jsonMints);
+      fs.writeFileSync(`${actualCreatorId}-mints.json`, jsonMints);
       if (holders) {
         const result = includeMetadata ? await getSnapshotWithMetadata(mints, rpcUrl) : await getSnapshot(mintData as string[], rpcUrl);
         const jsonObjs = JSON.stringify(result);

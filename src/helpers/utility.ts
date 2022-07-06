@@ -5,6 +5,9 @@ import log from 'loglevel';
 import { sendAndConfirmWithRetry } from './transaction-helper';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Nft } from '@metaplex-foundation/js';
+import axios from 'axios';
+import { Metadata } from './metaplexschema';
+import { MetadataModel } from '../types/metadata';
 
 export async function promiseAllInOrder<T>(
     it: (() => Promise<T>)[]
@@ -139,14 +142,15 @@ export async function getSnapshotWithMetadata(mints: Nft[], rpcUrl: string | nul
                 if (tokenResult && tokenResult.length > 0) {
                     let mainAccount = tokenResult.filter(x => (x.account.data as web3Js.ParsedAccountData).parsed.info.tokenAmount.uiAmount > 0)[0];
                     if (mainAccount) {
+                        let metadata = await axios.get<MetadataModel>(item.uri);
                         let holder: HolderAccountMetadata = {
                             walletId: (mainAccount.account.data as web3Js.ParsedAccountData).parsed.info.owner,
                             totalAmount: (mainAccount.account.data as web3Js.ParsedAccountData).parsed.info.tokenAmount.uiAmount,
                             mints: [{
                                 mint: item.mint.toBase58(),
-                                name: item.metadata.name,
-                                image: item.metadata.image,
-                                attributes: item.metadata.attributes
+                                name: item.name,
+                                image: metadata?.data?.image,
+                                attributes: metadata?.data?.attributes
                             }]
                         };
                         let tryFindAccount = accounts.find(x => x.walletId == holder.walletId);
@@ -154,11 +158,12 @@ export async function getSnapshotWithMetadata(mints: Nft[], rpcUrl: string | nul
                             console.log('account found, updating holder info', holder.walletId, holder.totalAmount, tryFindAccount.totalAmount);
                             const acctIndex = accounts.findIndex(x => x.walletId == holder.walletId);
                             let newHolder = tryFindAccount;
+                            let metadata = await axios.get<MetadataModel>(item.uri);
                             newHolder.mints.push({
                                 mint: item.mint.toBase58(),
                                 name: item.metadata.name,
-                                image: item.metadata.image,
-                                attributes: item.metadata.attributes
+                                image: metadata?.data?.image,
+                                attributes: metadata?.data?.attributes
                             });
                             newHolder.totalAmount = newHolder.totalAmount + holder.totalAmount;
                             accounts[acctIndex] = newHolder;
