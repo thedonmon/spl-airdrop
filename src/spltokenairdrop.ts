@@ -172,7 +172,6 @@ export async function airdropNft(request: AirdropCliRequest): Promise<any> {
             }
             finally {
                 progressBar.increment();
-                utility.elapsed(start, true);
             }
         }));
     }
@@ -229,7 +228,7 @@ export async function retryErrors(keypair: web3Js.Keypair, errorJsonFilePath: st
                 else {
                     log.warn(chalk.yellow(`${retryError.wallet} already has token ${retryError.mint}`));
                 }
-
+                utility.elapsed(start, true, log);
             }
             catch (err: any) {
                 const message = `ERROR: Failed AGAIN to send ${retryError.mint} to ${retryError.wallet}.`;
@@ -244,7 +243,6 @@ export async function retryErrors(keypair: web3Js.Keypair, errorJsonFilePath: st
             }
             finally {
                 progressBar.increment();
-                utility.elapsed(start, true, log);
             }
         }));
 
@@ -361,8 +359,8 @@ async function tryMintTo(request: TransferMintRequest<web3Js.PublicKey>): Promis
     txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
     txn.sign(keypair);
     const signature = await sendAndConfrimInternal(connection, txn);
-    let message = `${mintIfAuthority ? 'Minted ' : 'Transferrred '} ${totalTransferAmt} of ${tokenMint!.toBase58().substring(0, 6)} to ${toWallet.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
-    log.info(chalk.green(`${mintIfAuthority ? 'Minted ' : 'Transferrred '}`) + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint!.toBase58().substring(0, 6)} to ${toWallet.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
+    let message = `${mintIfAuthority ? 'Minted ' : 'Transferred '} ${totalTransferAmt} of ${splicer(tokenMint!.toBase58())} to ${toWallet.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green(`${mintIfAuthority ? 'Minted ' : 'Transferred '}`) + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${splicer(tokenMint!.toBase58())} to ${splicer(toWallet.toBase58())} `) + chalk.blue(` \n https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.TokenTransferTxt, message);
     return signature;
 }
@@ -371,8 +369,8 @@ async function tryTransfer(request: ITransferRequest<HolderAccount>): Promise<{ 
     let { toWallet, tokenMint, connection, keypair, totalTransferAmt, ownerAta, fromWallet } = request;
     const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.walletId), tokenMint: tokenMint!, totalTransferAmt: totalTransferAmt!, connection, keypair, ownerAta, fromWallet }, false);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
-    let message = `Sent ${totalTransferAmt} of ${tokenMint!.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
-    log.info(chalk.green('Sent ') + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${tokenMint!.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
+    let message = `Sent ${totalTransferAmt} of ${splicer(tokenMint!.toBase58())} to ${transfer.destination.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green('Sent ') + chalk.yellow(`${totalTransferAmt}`) + chalk.green(` of ${splicer(tokenMint!.toBase58())} to ${splicer(transfer.destination.toBase58())} `) + chalk.blue(` \n https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.TokenTransferTxt, message);
     return signature;
 }
@@ -381,8 +379,8 @@ async function tryTransferError(request: TransferErrorRequest<TransferError>): P
     let { toWallet, connection, keypair, ownerAta, fromWallet, closeAccounts } = request;
     const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.wallet), tokenMint: new web3Js.PublicKey(toWallet.mint), totalTransferAmt: toWallet.transferAmount, connection, keypair, ownerAta, fromWallet }, closeAccounts);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
-    let message = `Sent ${toWallet.transferAmount} of ${transfer.mint.toBase58().substring(0, 5)} to ${transfer.destination.toBase58()} .https://solscan.io/tx/${signature.txid}  \n`;
-    log.info(chalk.green('Sent ') + chalk.yellow(`${toWallet.transferAmount}`) + chalk.green(` of ${transfer.mint.toBase58().substring(0, 6)} to ${transfer.destination.toBase58().substring(0, 6)} `) + chalk.blue(`https://solscan.io/tx/${signature.txid} \n`));
+    let message = `Sent ${toWallet.transferAmount} of ${splicer(transfer.mint.toBase58())} to ${transfer.destination.toBase58()} .https://solscan.io/tx/${signature.txid}  \n`;
+    log.info(chalk.green('Sent ') + chalk.yellow(`${toWallet.transferAmount}`) + chalk.green(` of ${splicer(transfer.mint.toBase58())} to ${splicer(transfer.destination.toBase58())} `) + chalk.blue(`\n https://solscan.io/tx/${signature.txid} \n`));
     fs.appendFileSync(LogFiles.RetryTransferTxt, message);
     return signature;
 }
@@ -392,7 +390,7 @@ async function tryTransferMint(request: ITransferRequest<MintTransfer>): Promise
     const transfer = await prepTransfer({ toWallet: new web3Js.PublicKey(toWallet.wallet), tokenMint: new web3Js.PublicKey(toWallet.mintId), totalTransferAmt: totalTransferAmt!, connection, keypair, ownerAta, fromWallet }, true);
     const signature = await sendAndConfrimInternal(connection, transfer.txn);
     let message = `Sent ${totalTransferAmt} of ${transfer.mint.toBase58()} to ${transfer.destination}. https://solscan.io/tx/${signature.txid} \n`;
-    log.info(chalk.green('Sent ') + chalk.yellow(` ${totalTransferAmt} `) + chalk.green(` of ${transfer.mint.toBase58().substring(0, 6)}.. to ${transfer.destination.toBase58().substring(0, 6)}.. `) + chalk.blue(` https://solscan.io/tx/${signature.txid} \n `));
+    log.info(chalk.green('Sent ') + chalk.yellow(` ${totalTransferAmt} `) + chalk.green(` of ${splicer(transfer.mint.toBase58())}.. to ${splicer(transfer.destination.toBase58())}.. `) + chalk.blue(`\n https://solscan.io/tx/${signature.txid} \n `));
     fs.appendFileSync(LogFiles.TransferNftTxt, message);
     return signature;
 }
@@ -462,4 +460,16 @@ function getProgressBar(): cliProgress.SingleBar {
         },
         cliProgress.Presets.shades_classic,
     );
+}
+
+function splicer(value: string, charsFirst: number = 4, charsEnd: number = 3) : string {
+    const strinLen = value?.length ?? 0;
+    let returnStr = '';
+    if ((charsFirst || charsEnd) > strinLen) {
+        returnStr = strinLen == 0 ? returnStr : `${value.slice(0, strinLen)}`;
+    }
+    else {
+        returnStr = strinLen == 0 ? returnStr : `${value.slice(0, charsFirst)}..${value.slice(-charsEnd)}`;
+    }
+    return returnStr;
 }

@@ -1,9 +1,10 @@
-import { HolderAccount } from '../types/holderaccounts';
+import { HolderAccount, HolderAccountMetadata } from '../types/holderaccounts';
 import * as web3Js from '@solana/web3.js';
 import * as fs from 'fs';
 import log from 'loglevel';
 import { sendAndConfirmWithRetry } from './transaction-helper';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { Nft } from '@metaplex-foundation/js';
 
 export async function promiseAllInOrder<T>(
     it: (() => Promise<T>)[]
@@ -112,6 +113,68 @@ export async function getSnapshot(mintIds: string[], rpcUrl: string | null = nul
     return accounts;
 }
 
+export async function getSnapshotWithMetadata(mints: Nft[], rpcUrl: string | null = null, cluster: string = 'devnet'): Promise<HolderAccountMetadata[]> {
+    let accounts: HolderAccountMetadata[] = [];
+    const connection = getConnection(cluster, rpcUrl);
+    const mintChunks = chunkItems(mints);
+    for (const chunk of mintChunks)
+        await Promise.all(
+            chunk.map(async (item) => {
+                item.tokenStandard
+                let filter = {
+                    memcmp: {
+                        offset: 0,
+                        bytes: item.mint.toBase58(),
+                    },
+                };
+                let filter2 = {
+                    dataSize: 165,
+                };
+                let getFilter = [filter, filter2];
+                let programAccountsConfig = { filters: getFilter, encoding: "jsonParsed" };
+                let tokenResult = await connection.getParsedProgramAccounts(
+                    TOKEN_PROGRAM_ID,
+                    programAccountsConfig
+                );
+                if (tokenResult && tokenResult.length > 0) {
+                    let mainAccount = tokenResult.filter(x => (x.account.data as web3Js.ParsedAccountData).parsed.info.tokenAmount.uiAmount > 0)[0];
+                    if (mainAccount) {
+                        let holder: HolderAccountMetadata = {
+                            walletId: (mainAccount.account.data as web3Js.ParsedAccountData).parsed.info.owner,
+                            totalAmount: (mainAccount.account.data as web3Js.ParsedAccountData).parsed.info.tokenAmount.uiAmount,
+                            mints: [{
+                                mint: item.mint.toBase58(),
+                                name: item.metadata.name,
+                                image: item.metadata.image,
+                                attributes: item.metadata.attributes
+                            }]
+                        };
+                        let tryFindAccount = accounts.find(x => x.walletId == holder.walletId);
+                        if (tryFindAccount) {
+                            console.log('account found, updating holder info', holder.walletId, holder.totalAmount, tryFindAccount.totalAmount);
+                            const acctIndex = accounts.findIndex(x => x.walletId == holder.walletId);
+                            let newHolder = tryFindAccount;
+                            newHolder.mints.push({
+                                mint: item.mint.toBase58(),
+                                name: item.metadata.name,
+                                image: item.metadata.image,
+                                attributes: item.metadata.attributes
+                            });
+                            newHolder.totalAmount = newHolder.totalAmount + holder.totalAmount;
+                            accounts[acctIndex] = newHolder;
+                        }
+                        else {
+                            console.log('account not found yet, adding to overall holders', holder.walletId);
+                            accounts.push(holder);
+                        }
+                    }
+
+                }
+            })
+        );
+    return accounts;
+}
+
 export function loadWalletKey(keypair: string): web3Js.Keypair {
     if (!keypair || keypair == '') {
         throw new Error('Keypair is required!');
@@ -142,14 +205,15 @@ export function now(eventName = null) {
 
 // Returns time elapsed since `beginning`
 // (and, optionally, prints the duration in seconds)
-export function elapsed(beginning: number, log = false, logger?: any) {
+export function elapsed(beginning: number, useLogger: boolean = true, logger?: any, isCli: boolean = false) {
     const duration = new Date().getTime() - beginning;
-    if (log) {
+    const msg = isCli ? 'Safe to quit cmd. Total Elapsed Time: ' : '';
+    if (useLogger) {
         if (logger) {
-            logger.info(` ${duration / 1000}s `);
+            msg !== '' ? logger.info(`${msg}${duration / 1000}s `) : logger.debug(`${msg}${duration / 1000}s `);
         }
         else {
-            console.log(` ${duration / 1000}s `);
+            msg !== '' ? log.info(`${msg}${duration / 1000}s `) : log.debug(`${msg}${duration / 1000}s `);
         }
     }
     return duration;

@@ -5,12 +5,14 @@ import log, { LogLevelDesc } from 'loglevel';
 import * as fs from 'fs';
 import { InvalidArgumentError, program } from 'commander';
 import * as spltokenairdrop from './spltokenairdrop';
-import { elapsed, getSnapshot, loadWalletKey, now } from './helpers/utility';
+import { elapsed, getSnapshot, getSnapshotWithMetadata, loadWalletKey, now } from './helpers/utility';
 import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
 import { LogFiles } from './helpers/constants';
 import _ from 'lodash';
+import { Metaplex, NftClient } from '@metaplex-foundation/js';
+import * as web3Js from '@solana/web3.js';
 
 const CACHE_PATH = './.cache';
 
@@ -53,7 +55,7 @@ programCommand('airdrop-token')
       const result = await spltokenairdrop.airdropToken({ keypair: kp, whitelistPath: airdroplist, transferAmount: amount, cluster: env, rpcUrl, simulate: true, batchSize, exclusionList: exclusionArr, mintIfAuthority: mintAuthority, overrideBalanceCheck });
       log.log(result);
     }
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 
 programCommand('airdrop-token-per-nft')
@@ -97,7 +99,7 @@ programCommand('airdrop-token-per-nft')
     }
     const result = await spltokenairdrop.airdropTokenPerNft({ keypair: kp, holdersList: holderAccounts, tokenMint: mintPk, decimals, transferAmount: amount, cluster: env, rpcUrl, simulate, batchSize, exclusionList });
     log.info(result);
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 
 
@@ -129,7 +131,7 @@ programCommand('airdrop-nft')
       const result = await spltokenairdrop.airdropNft({ keypair: kp, whitelistPath: airdroplist, mintlistPath: mintIds, cluster: env, rpcUrl, simulate: true, batchSize: batchSize as number });
       log.log(result);
     }
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 
 programCommand('retry-errors')
@@ -163,7 +165,7 @@ programCommand('retry-errors')
       const result = await spltokenairdrop.retryErrors(kp, defaultErrorsPath, env, rpcUrl, true, batchSize as number);
       log.log(result);
     }
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 
 
@@ -194,7 +196,7 @@ programCommand('get-holders', { requireWallet: false })
     else {
       log.log('Please check file is in correct format');
     }
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 
 programCommand('get-holders-cm', { requireWallet: false })
@@ -221,7 +223,127 @@ programCommand('get-holders-cm', { requireWallet: false })
     fs.writeFileSync('holdersList.json', jsonObjs);
     log.log('Holders written to holders.json');
     log.log(result);
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('get-mints-cmid', { requireWallet: false })
+  .argument('<candymachineid>', 'Candy Machine Id')
+  .option('-v, --version <number>', 'candy machine version (default 2)', myParseInt, 2)
+  .option('-h, --holders <boolean>', 'get holders list', myParseBool, false)
+  .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', myParseBool, false)
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (candymachineid: string, options, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { env, version, holders, includeMetadata, rpcUrl } = cmd.opts();
+    let start = now();
+    const connection = rpcUrl != null ? new web3Js.Connection(rpcUrl) : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = new Metaplex(connection, {
+      cluster: env as web3Js.Cluster
+    });
+    const candyMachinePk = new web3Js.PublicKey(candymachineid);
+    const nftClient = new NftClient(mp);
+    const mints = await nftClient.findAllByCandyMachine(candyMachinePk, version);
+    if (mints) {
+      const mintData = includeMetadata ? mints.map(x => { return { mint: x.mint.toBase58(), name: x.metadata.name, image: x.metadata.image, attributes: x.metadata.attributes }}) : mints.map(x => x.mint.toBase58());
+      const jsonMints = JSON.stringify(mintData);
+      fs.writeFileSync(`${candymachineid}-mints.json`, jsonMints);
+      if (holders) {
+        const result = includeMetadata ? await getSnapshotWithMetadata(mints, rpcUrl) : await getSnapshot(mintData as string[], rpcUrl);
+        const jsonObjs = JSON.stringify(result);
+        fs.writeFileSync('holdersList.json', jsonObjs);
+        log.log('Holders written to holders.json');
+        log.log(result);
+      }
+    }
+    else {
+      log.error('No mints found...');
+    }
+    
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('get-mints-creator', { requireWallet: false })
+  .argument('<verifiedCreatorId>', 'Verified Creator Id')
+  .option('-v, --version <number>', 'candy machine version (default 2)', myParseInt, 2)
+  .option('-h, --holders <boolean>', 'get holders list', myParseBool, false)
+  .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', myParseBool, false)
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (verifiedCreatorId: string, options, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { env, version, holders, includeMetadata, rpcUrl } = cmd.opts();
+    let start = now();
+    const connection = rpcUrl != null ? new web3Js.Connection(rpcUrl) : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = new Metaplex(connection, {
+      cluster: env as web3Js.Cluster
+    });
+    const candyMachinePk = new web3Js.PublicKey(verifiedCreatorId);
+    const nftClient = new NftClient(mp);
+    const mints = await nftClient.findAllByCreator(candyMachinePk, version);
+    if (mints) {
+      const mintData = includeMetadata ? mints.map(x => { return { mint: x.mint.toBase58(), name: x.metadata.name, image: x.metadata.image, attributes: x.metadata.attributes }}) : mints.map(x => x.mint.toBase58());
+      const jsonMints = JSON.stringify(mintData);
+      fs.writeFileSync(`${verifiedCreatorId}-mints.json`, jsonMints);
+      if (holders) {
+        const result = includeMetadata ? await getSnapshotWithMetadata(mints, rpcUrl) : await getSnapshot(mintData as string[], rpcUrl);
+        const jsonObjs = JSON.stringify(result);
+        fs.writeFileSync('holdersList.json', jsonObjs);
+        log.log('Holders written to holders.json');
+        log.log(result);
+      }
+    }
+    else {
+      log.error('No mints found...');
+    }
+    
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('get-mints-wallet', { requireWallet: false })
+  .argument('<wallet>', 'wallet')
+  .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', myParseBool, false)
+  .option(
+    '-r, --rpc-url <string>',
+    'custom rpc url since this is a heavy command',
+  )
+  .action(async (wallet: string, options, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('get wallet mints', { horizontalLayout: 'controlled smushing' })
+      )
+    );
+    const { env, includeMetadata, rpcUrl } = cmd.opts();
+    let start = now();
+    const connection = rpcUrl != null ? new web3Js.Connection(rpcUrl) : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = new Metaplex(connection, {
+      cluster: env as web3Js.Cluster
+    });
+    const walletPk = new web3Js.PublicKey(wallet);
+    const nftClient = new NftClient(mp);
+    const mints = await nftClient.findAllByOwner(walletPk);
+    if (mints) {
+      const mintData = includeMetadata ? mints.map(x => { return { mint: x.mint.toBase58(), name: x.metadata.name, image: x.metadata.image, attributes: x.metadata.attributes }}) : mints.map(x => x.mint.toBase58());
+      const jsonMints = JSON.stringify(mintData);
+      fs.writeFileSync(`${wallet}-mints.json`, jsonMints);
+    }
+    else {
+      log.error('No mints found...');
+    }
+    
+    elapsed(start, true, undefined, true);
   });
 
 programCommand('format-snapshot', { requireWallet: false })
@@ -253,7 +375,7 @@ programCommand('format-snapshot-to-wallets', { requireWallet: false })
     const walletsStr = JSON.stringify(wallets);
     fs.writeFileSync('wallets.json', walletsStr);
     log.log('Wallets written to wallets.json');
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 
 programCommand('exclude-address', { requireWallet: false })
@@ -276,7 +398,7 @@ programCommand('exclude-address', { requireWallet: false })
     const exclusionstr = JSON.stringify(exclusions);
     fs.writeFileSync('exclusionlist.json', exclusionstr);
     log.log('excluded accounts written to exclusionlist.json');
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 
 
@@ -298,7 +420,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('mintransfer.json', holdersStr);
     log.log('Holders written to holders.json');
-    elapsed(start, true);
+    elapsed(start, true, undefined, true);
   });
 // From commander examples
 function myParseInt(value: any) {
