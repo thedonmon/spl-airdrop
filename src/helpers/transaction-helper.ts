@@ -1,8 +1,8 @@
 /**
  * Credits: @strata-protocol
  */
-import * as web3Js from "@solana/web3.js";
-import { sleep, TimeoutError } from "./utility";
+import * as web3Js from '@solana/web3.js';
+import { sleep, TimeoutError } from './utility';
 import log from 'loglevel';
 
 function getUnixTime(): number {
@@ -13,7 +13,7 @@ export const awaitTransactionSignatureConfirmation = async (
   txid: web3Js.TransactionSignature,
   timeout: number,
   connection: web3Js.Connection,
-  commitment: web3Js.Commitment = "recent",
+  commitment: web3Js.Commitment = 'recent',
   queryStatus = false,
 ): Promise<web3Js.SignatureStatus | null | any> => {
   let done = false;
@@ -29,11 +29,11 @@ export const awaitTransactionSignatureConfirmation = async (
         return Promise.resolve();
       }
       done = true;
-      log.debug("Rejecting for timeout...");
+      log.debug('Rejecting for timeout...');
       Promise.reject(new TimeoutError(txid));
     }, timeout);
     try {
-      log.debug("COMMIMENT", commitment);
+      log.debug('COMMIMENT', commitment);
       subId = connection.onSignature(
         txid,
         (result: any, context: any) => {
@@ -44,42 +44,37 @@ export const awaitTransactionSignatureConfirmation = async (
             confirmations: 0,
           };
           if (result.err) {
-            log.error("Rejected via websocket", result.err);
+            log.error('Rejected via websocket', result.err);
             reject(status);
           } else {
-            log.debug("Resolved via websocket", result);
+            log.debug('Resolved via websocket', result);
             resolve(status);
           }
         },
-        commitment
+        commitment,
       );
     } catch (e) {
       done = true;
-      log.error("WS error in setup", txid, e);
+      log.error('WS error in setup', txid, e);
     }
     while (!done && queryStatus) {
       // eslint-disable-next-line no-loop-func
       (async () => {
         try {
-          const signatureStatuses = await connection.getSignatureStatuses([
-            txid,
-          ]);
+          const signatureStatuses = await connection.getSignatureStatuses([txid]);
           status = signatureStatuses && signatureStatuses.value[0];
           if (!done) {
             if (!status) {
-              log.debug("REST null result for", txid, status);
+              log.debug('REST null result for', txid, status);
             } else if (status.err) {
-              log.error("REST error for", txid, status);
+              log.error('REST error for', txid, status);
               done = true;
               reject(status.err);
             } else if (!status.confirmations && !status.confirmationStatus) {
-              log.warn("REST no confirmations for", txid, status);
+              log.warn('REST no confirmations for', txid, status);
             } else {
-              log.debug("REST confirmation for", txid, status);
-              if (
-                !status.confirmationStatus || status.confirmationStatus ==
-                commitment
-              ) {
+              log.debug('REST confirmation for', txid, status);
+              if (!status.confirmationStatus || status.confirmationStatus == commitment) {
                 done = true;
                 resolve(status);
               }
@@ -87,7 +82,7 @@ export const awaitTransactionSignatureConfirmation = async (
           }
         } catch (e) {
           if (!done) {
-            log.error("REST connection error: txid", txid, e);
+            log.error('REST connection error: txid', txid, e);
           }
         }
       })();
@@ -101,19 +96,19 @@ export const awaitTransactionSignatureConfirmation = async (
     connection.removeSignatureListener(subId);
   }
   done = true;
-  log.debug("Returning status ", status);
+  log.debug('Returning status ', status);
   return Promise.resolve(status);
 };
 
 async function simulateTransaction(
   connection: web3Js.Connection,
   transaction: web3Js.Transaction,
-  commitment: web3Js.Commitment
+  commitment: web3Js.Commitment,
 ): Promise<web3Js.RpcResponseAndContext<web3Js.SimulatedTransactionResponse>> {
   transaction.recentBlockhash = (await connection.getLatestBlockhash(commitment)).blockhash;
   const res = await connection.simulateTransaction(transaction);
   if (res.value.err) {
-    throw new Error("failed to simulate transaction: " + JSON.stringify(res.value.err));
+    throw new Error('failed to simulate transaction: ' + JSON.stringify(res.value.err));
   }
   return res;
 }
@@ -150,38 +145,37 @@ export async function sendAndConfirmWithRetry(
       true,
     );
 
-    if (!confirmation)
-      throw new TimeoutError(txid);
+    if (!confirmation) throw new TimeoutError(txid);
 
     if (confirmation.err) {
       const tx = await connection.getTransaction(txid);
-      log.error(tx?.meta?.logMessages?.join("\n"));
+      log.error(tx?.meta?.logMessages?.join('\n'));
       log.error(confirmation.err);
-      throw new Error("Transaction failed: Custom instruction error");
+      throw new Error('Transaction failed: Custom instruction error');
     }
 
     slot = confirmation?.slot || 0;
   } catch (err: any) {
-    log.error("Unexpected error caught", err, err?.message);
+    log.error('Unexpected error caught', err, err?.message);
     if (err.timeout) {
       throw new TimeoutError(txid);
     }
     let simulateResult: web3Js.SimulatedTransactionResponse | null = null;
     try {
       simulateResult = (
-        await simulateTransaction(connection, web3Js.Transaction.from(txn), "single")
+        await simulateTransaction(connection, web3Js.Transaction.from(txn), 'single')
       ).value;
     } catch (e: any) {
       log.warn('Simulation failed', e, e?.message);
     }
     if (simulateResult && simulateResult.err) {
       if (simulateResult.logs) {
-        log.error(simulateResult.logs.join("\n"));
+        log.error(simulateResult.logs.join('\n'));
       }
     }
 
     if (err.err) {
-      throw err.err
+      throw err.err;
     }
 
     throw err;
@@ -189,7 +183,7 @@ export async function sendAndConfirmWithRetry(
     done = true;
   }
 
-  log.debug("Latency", txid, getUnixTime() - startTime);
+  log.debug('Latency', txid, getUnixTime() - startTime);
 
   return Promise.resolve({ txid });
 }

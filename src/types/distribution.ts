@@ -1,5 +1,5 @@
 export interface Distribution {
-    wallet: string;
-    totalOwnedNftsCount: number;
-    nFtsToAirdrop: number;
+  wallet: string;
+  totalOwnedNftsCount: number;
+  nFtsToAirdrop: number;
 }

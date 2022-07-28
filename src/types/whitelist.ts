@@ -1,4 +1,4 @@
 export interface Whitelist {
-    wallets: string[],
-    mint: string
+  wallets: string[];
+  mint: string;
 }

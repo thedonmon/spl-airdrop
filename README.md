@@ -1,10 +1,11 @@
 # Token Airdrop Tool
+
 ## _The one stop shop for token needs_
 
-If you enjoy using this tool send the creator a tip! 
+If you enjoy using this tool send the creator a tip!
+
 - SOL: MaMaNNgYTNqLzt6CZHzvhropNVqv6NwKo4JJQQt5BzP
 - ETH: maman.eth
-
 
 ## Features
 
@@ -31,13 +32,12 @@ cd spl-airdrop
 yarn install
 ```
 
-The airdrop tool is quite resource intensive on the solana RPC so using a custom RPC url is strongly recommeneded. You can get a RPC over at [Quicknode](https://www.quicknode.com/pricing) without ratelmiting for $99/month 
-
+The airdrop tool is quite resource intensive on the solana RPC so using a custom RPC url is strongly recommeneded. You can get a RPC over at [Quicknode](https://www.quicknode.com/pricing) without ratelmiting for $99/month
 
 #### Airdrop NFTs / Bulk Transfer NFTs.
 
 Use this tool to airdrop a specific set of NFTs to holders. You can
-Airdrop expects a list of mintids, and then a list of wallets to airdrop the nfts to. You can use the `get-holders-cm` command to get the hashlist. This will generate a hashlist for you. 
+Airdrop expects a list of mintids, and then a list of wallets to airdrop the nfts to. You can use the `get-holders-cm` command to get the hashlist. This will generate a hashlist for you.
 The file format to pass as _path to airdrop list_ can be found in `examples/nftdistrolist.json`. This is the only format that will be accepted. Use this file to add the wallet and how many NFTs from the hashlist generated a wallet should receive. If you would like to mass send NFTs from a wallet you own, get the holders snapshot and get the mint ids from your wallet or pass the list of mint ids and only specify the address you are trying to send to in the same format as `nftdistrolist.json`.
 
 ```sh
@@ -52,7 +52,7 @@ npx ts-node src/index.ts airdrop-nft \
 
 #### Airdrop Whitelist tokens
 
-Use this command to airdrop your WL tokens or any SPL token to a list of addresses. Please format the airdrop list the exact same way as `examples/whitelist.json` Reference the type `whitelist.ts`. 
+Use this command to airdrop your WL tokens or any SPL token to a list of addresses. Please format the airdrop list the exact same way as `examples/whitelist.json` Reference the type `whitelist.ts`.
 
 ```sh
 npx ts-node src/index.ts airdrop-token \
@@ -62,10 +62,11 @@ npx ts-node src/index.ts airdrop-token \
     -al <some path> \
     -r  <rpc url>
 ```
+
 #### Airdrop Token per NFTs
 
 Use this command to airdrop a specific SPL-token per NFT.
-You can use the `get-holders` command to get the format for the airdrop list. 
+You can use the `get-holders` command to get the format for the airdrop list.
 Theres also an option to get holders, you have to pass the parameter and the candymachineid (verified creator address).
 
 ```sh
@@ -84,15 +85,15 @@ For each command above, all errors are formatted and appended to a `transfererro
 
 ```sh
 npx ts-node src/index.ts retry-errors \
-    -ep <error-file path> \ 
+    -ep <error-file path> \
     -e mainnet-beta \
     -k ~/.config/solana/key.json \
     -b 100 \
     -r  <rpc url>
 ```
 
-
 ## Upcoming features
+
 - [ ] UI to make this tool user friendly
 
 ## Development

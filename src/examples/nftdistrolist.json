@@ -1,9 +1,9 @@
 {
-    "distributionList": [
-        {
-            "wallet": "walletId",
-            "totalOwnedNftsCount": 101,
-            "nFtsToAirdrop": 3
-        }
-    ]
+  "distributionList": [
+    {
+      "wallet": "walletId",
+      "totalOwnedNftsCount": 101,
+      "nFtsToAirdrop": 3
+    }
+  ]
 }

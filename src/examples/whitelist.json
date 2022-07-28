@@ -1,4 +1,4 @@
 {
-    "mint":"token mintId",
-    "wallets":["walletAddress1", "walletAddress2"] 
+  "mint": "token mintId",
+  "wallets": ["walletAddress1", "walletAddress2"]
 }

@@ -1,4 +1,4 @@
 export interface IMintTransfer {
-    wallet: string,
-    mintId: string
+  wallet: string;
+  mintId: string;
 }

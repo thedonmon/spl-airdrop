@@ -49,3 +49,4 @@ holder*.json
 *exclu*.json
 *wallet*.json
 *snap*.json
+src/images/*

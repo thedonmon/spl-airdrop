@@ -1,6 +1,6 @@
 export type TransactionInfoOptions = {
-    getInfo: boolean;
-    excludeSigner: boolean;
-    excludeAddress: string;
-    tokenAccount: boolean;
-}
+  getInfo: boolean;
+  excludeSigner: boolean;
+  excludeAddress: string;
+  tokenAccount: boolean;
+};
