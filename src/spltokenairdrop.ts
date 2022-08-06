@@ -561,10 +561,10 @@ export function formatHoldersToWallet(
       jsonData = filterMarketPlacesByHolders(jsonData);
     }
     for (var wallet of jsonData) {
-      wallets.push(`${wallet.walletId};${wallet.mintIds.length}`);
-      // for (var mint of wallet.mintIds) {
-      //     wallets.push(wallet.walletId);
-      // }
+      //wallets.push(`${wallet.walletId}:${wallet.mintIds.length}`);
+      for (var mint of wallet.mintIds) {
+          wallets.push(wallet.walletId);
+      }
     }
   } else {
     // per wallet
