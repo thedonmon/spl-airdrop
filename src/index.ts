@@ -171,7 +171,7 @@ programCommand('airdrop-token-per-nft')
 programCommand('airdrop-nft')
   .requiredOption('-m, --mintIds <path>', 'Mint Ids of NFTs to Send')
   .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
-  .option('-s, --simulate <boolean>', 'Simuate airdrop', myParseBool, false)
+  .option('-s, --simulate <string>', 'Simuate airdrop')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .option('-b, --batch-size <number>', 'Ammount to batch transactions', myParseInt, 5)
   .action(async (_, cmd) => {
@@ -182,8 +182,12 @@ programCommand('airdrop-nft')
     clearLogFiles();
     const { keypair, env, mintIds, airdroplist, simulate, rpcUrl, batchSize } = cmd.opts();
     console.log(cmd.opts());
+    let simulated = false;
+    if (simulate && simulate === 'true') {
+      simulated = true;
+    }
     const kp = loadWalletKey(keypair);
-    if (!simulate) {
+    if (!simulated) {
       await spltokenairdrop.airdropNft({
         keypair: kp,
         whitelistPath: airdroplist,
@@ -524,6 +528,24 @@ programCommand('exclude-address', { requireWallet: false })
   });
 
 programCommand('format-mint-drop', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .requiredOption('-a, --amount <number>', 'Multipler for the amount of nfts to drop')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })),
+    );
+    const { amount } = cmd.opts();
+    let start = now();
+    const stringData = fs.readFileSync(snapshot, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any;
+    const holders = spltokenairdrop.formatNftDropByWalletMultiplier(jsonData, amount as number);
+    const holdersStr = JSON.stringify(holders);
+    fs.writeFileSync('nfttransfer.json', holdersStr);
+    log.log('Holders written to holders.json');
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('format-mint-drop', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
   .requiredOption('-a, --amount <number>', 'Amount of NFTs per mint')
   .action(async (snapshot: string, _, cmd) => {

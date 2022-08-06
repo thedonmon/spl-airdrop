@@ -239,7 +239,6 @@ export async function airdropNft(request: AirdropCliRequest): Promise<any> {
   progressBar.start(mintsTransferList.length, 0);
 
   mintsTransferList = filterMarketPlaces(mintsTransferList);
-  console.log(mintsTransferList);
   if (simulate) {
     return mintsTransferList;
   }
@@ -282,7 +281,7 @@ export async function airdropNft(request: AirdropCliRequest): Promise<any> {
     );
   }
   progressBar.stop();
-  Promise.resolve();
+  return Promise.resolve();
 }
 
 function handleError(
@@ -462,6 +461,32 @@ export function formatNftDropByWallet(
   }
   return mintTfer;
 }
+
+export function formatNftDropByWalletMultiplier(
+    holderAccounts: {wallet_id: string, nft_count: number}[],
+    multiplierPerMint: number,
+  ): Distribution[] {
+    let mintTfer: Distribution[] = [];
+    for (var holder of holderAccounts) {
+      let nftsToDrop = holder.nft_count * multiplierPerMint;
+      if (holder.nft_count >= 10 && holder.nft_count < 30) {
+        nftsToDrop = holder.nft_count + 1;
+      }
+      else if (holder.nft_count >= 30) {
+        nftsToDrop = holder.nft_count + 2;
+      }
+      else {
+        nftsToDrop = holder.nft_count;
+      }
+      const holderAcct: Distribution = {
+        wallet: holder.wallet_id,
+        totalOwnedNftsCount: holder.nft_count,
+        nFtsToAirdrop: nftsToDrop,
+      };
+      mintTfer.push(holderAcct);
+    }
+    return mintTfer;
+  }
 
 export function formatHoldersList(snapShotFilePath: string): HolderAccount[] {
   const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
