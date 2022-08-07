@@ -235,13 +235,14 @@ export async function airdropNft(request: AirdropCliRequest): Promise<any> {
     const mintsObj = mintsToTransfer.map((x) => new MintTransfer(distro.wallet.trim(), x));
     mintsTransferList = _.concat(mintsTransferList, mintsObj);
   }
-  const progressBar = getProgressBar();
-  progressBar.start(mintsTransferList.length, 0);
 
   mintsTransferList = filterMarketPlaces(mintsTransferList);
   if (simulate) {
     return mintsTransferList;
   }
+  const progressBar = getProgressBar();
+  progressBar.start(mintsTransferList.length, 0);
+
   const mintTransferChunks = utility.chunkItems(mintsTransferList, batchSize);
   for (let mintTransferChunk of mintTransferChunks) {
     await Promise.all(
@@ -290,7 +291,6 @@ function handleError(
   transferErrorTxtPath: string,
 ): void {
   log.error(chalk.red(errorMsg.message));
-  fs.appendFileSync(LogFiles.TransferNftErrorsTxt, errorMsg.message!);
   if (!fs.existsSync(transferErrorJsonPath)) {
     fs.writeFileSync(transferErrorJsonPath, JSON.stringify([]));
   }

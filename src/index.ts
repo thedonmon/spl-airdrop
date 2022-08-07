@@ -19,6 +19,7 @@ import { LogFiles } from './helpers/constants';
 import _ from 'lodash';
 import { Metaplex, NftClient } from '@metaplex-foundation/js';
 import * as web3Js from '@solana/web3.js';
+import * as utility from './helpers/utility';
 
 const CACHE_PATH = './.cache';
 
@@ -524,6 +525,22 @@ programCommand('exclude-address', { requireWallet: false })
     const exclusionstr = JSON.stringify(exclusions);
     fs.writeFileSync('exclusionlist.json', exclusionstr);
     log.log('excluded accounts written to exclusionlist.json');
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('get-count', { requireWallet: false })
+  .argument('<transactions>', 'transactions path')
+  .action(async (transactions: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('get txn info', { horizontalLayout: 'controlled smushing' })),
+    );
+    const { env, rpcUrl } = cmd.opts();
+    let start = now();
+    const stringData = fs.readFileSync(transactions, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any[];
+    console.log(jsonData);
+    const sum  = utility.calculateSum(jsonData, 'nFtsToAirdrop');
+    console.log('total: ', sum);
     elapsed(start, true, undefined, true);
   });
 
