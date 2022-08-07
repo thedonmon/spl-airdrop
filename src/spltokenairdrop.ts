@@ -291,10 +291,11 @@ function handleError(
   transferErrorTxtPath: string,
 ): void {
   log.error(chalk.red(errorMsg.message));
+  //fs.appendFileSync(LogFiles.TransferNftErrorsTxt, errorMsg.message!);
   if (!fs.existsSync(transferErrorJsonPath)) {
     fs.writeFileSync(transferErrorJsonPath, JSON.stringify([]));
   }
-  const errorString = fs.readFileSync(transferErrorTxtPath, 'utf-8');
+  const errorString = fs.readFileSync(transferErrorJsonPath, 'utf-8');
   if (errorString) {
     const jsonErrors = JSON.parse(errorString) as TransferError[];
     jsonErrors.push(errorMsg);
@@ -783,6 +784,8 @@ async function prepTransfer(
     splToken.TOKEN_PROGRAM_ID,
   );
   const txn = new web3Js.Transaction().add(txnIns);
+  txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
+  txn.feePayer = fromWallet;
   if (createCloseIx) {
     const closeAccount = splToken.createCloseAccountInstruction(
       ownerAta,
