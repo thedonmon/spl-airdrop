@@ -37,18 +37,16 @@ programCommand('airdrop-token')
     1,
   )
   .option(
-    '-ob, --override-balance-check <boolean>',
+    '-ob, --override-balance-check',
     'send amount regardless of destination wallet balance',
-    myParseBool,
     false,
   )
   .option(
-    '-m, --mint-authority <boolean>',
+    '-m, --mint-authority',
     'mint token to destination if keypair is mintauthority',
-    myParseBool,
     true,
   )
-  .option('-s, --simulate', 'Simulate airdrop', myParseBool, false)
+  .option('-s, --simulate', 'Simulate airdrop', false)
   .option('-b, --batch-size <number>', 'size to batch run txns', myParseInt, 50)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (_, cmd) => {
@@ -110,9 +108,9 @@ programCommand('airdrop-token-per-nft')
   .requiredOption('-d, --decimals <number>', 'Decimals of the SPL token', myParseInt, 9)
   .requiredOption('-m, --mintid <string>', 'Airdrop token MintID')
   .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
-  .option('-h, --getholders <boolean>', 'Take snapshot', myParseBool, false)
+  .option('-h, --getholders', 'Take snapshot', false)
   .option('-cm, --verifiedcreator <string>', 'Verified creator address')
-  .option('-s, --simulate', 'Simuate airdrop', myParseBool, false)
+  .option('-s, --simulate', 'Simuate airdrop', false)
   .option('-ex, --exclusionlist <path>', 'path to addresses to excluse')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .option('-b, --batch-size <number>', 'Amount to batch transactions', myParseInt, 25)
@@ -182,13 +180,8 @@ programCommand('airdrop-nft')
     let start = now();
     clearLogFiles();
     const { keypair, env, mintIds, airdroplist, simulate, rpcUrl, batchSize } = cmd.opts();
-    console.log(cmd.opts());
-    let simulated = false;
-    if (simulate && simulate === 'true') {
-      simulated = true;
-    }
     const kp = loadWalletKey(keypair);
-    if (!simulated) {
+    if (!simulate) {
       await spltokenairdrop.airdropNft({
         keypair: kp,
         whitelistPath: airdroplist,
@@ -218,7 +211,7 @@ programCommand('retry-errors')
     '-ep, --errorsPath <path>',
     'Path to errors JSON file. Will default to errors file path if found',
   )
-  .option('-s, --simulate <boolean>', 'Simuate airdrop', myParseBool, false)
+  .option('-s, --simulate', 'Simuate airdrop', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .option('-b, --batch-size <number>', 'Ammount to batch transactions', myParseInt, 5)
   .action(async (_, cmd) => {
@@ -305,8 +298,8 @@ programCommand('get-holders-cm', { requireWallet: false })
 programCommand('get-mints-cmid', { requireWallet: false })
   .argument('<candymachineid>', 'Candy Machine Id')
   .option('-v, --version <number>', 'candy machine version (default 2)', myParseInt, 2)
-  .option('-h, --holders <boolean>', 'get holders list', myParseBool, false)
-  .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', myParseBool, false)
+  .option('-h, --holders', 'get holders list', false)
+  .option('-m, --include-metadata', 'include metadata info about NFT', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (candymachineid: string, options, cmd) => {
     console.log(
@@ -356,8 +349,8 @@ programCommand('get-mints-creator', { requireWallet: false })
     myParseInt,
     0,
   )
-  .option('-h, --holders <boolean>', 'get holders list', myParseBool, false)
-  .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', myParseBool, false)
+  .option('-h, --holders', 'get holders list', false)
+  .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (actualCreatorId: string, options, cmd) => {
     console.log(
@@ -402,7 +395,7 @@ programCommand('get-mints-creator', { requireWallet: false })
 
 programCommand('get-mints-wallet', { requireWallet: false })
   .argument('<wallet>', 'wallet')
-  .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', myParseBool, false)
+  .option('-m, --include-metadata', 'include metadata info about NFT', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (wallet: string, options, cmd) => {
     console.log(
@@ -470,27 +463,20 @@ programCommand('format-snapshot-to-wallets', { requireWallet: false })
 
 programCommand('format-snapshot-to-wallets-permint', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
-  .option('-rn, --random <string>', 'randomize per mint true or false')
-  .option('-f, --filtermp <string>', 'filter marketplace true or false')
+  .option('-rn, --random', 'randomize per mint true or false', false)
+  .option('-f, --filtermp', 'filter marketplace true or false', false)
   .action(async (snapshot: string, _, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
     );
     let start = now();
+    console.log(cmd.opts())
     const { random, filtermp } = cmd.opts();
-    let randomize = false;
-    let filterMarketplace = false;
-    if (random && random === 'true') {
-      randomize = true;
-    }
-    if (filtermp && filtermp === 'true') {
-      filterMarketplace = true;
-    }
     const wallets = spltokenairdrop.formatHoldersToWallet(
       snapshot,
       true,
-      randomize,
-      filterMarketplace,
+      random,
+      filtermp,
     );
     const walletsStr = JSON.stringify(wallets);
     fs.writeFileSync('walletsPerMint.json', walletsStr);
@@ -589,18 +575,6 @@ function myParseInt(value: any) {
   return parsedValue;
 }
 
-function myParseBool(value: any) {
-  try {
-    const parsedValue = JSON.parse(value);
-    if (!_.isBoolean(parsedValue)) {
-      throw new InvalidArgumentError('Not a boolean.');
-    }
-    return parsedValue;
-  } catch (e) {
-    throw new InvalidArgumentError(`Not a boolean. ${value}`);
-  }
-}
-
 if (!fs.existsSync(CACHE_PATH)) {
   fs.mkdirSync(CACHE_PATH);
 }
@@ -637,16 +611,16 @@ function setLogLevel(value: any, prev: any) {
 }
 
 function clearLogFiles(isRetry: boolean = false) {
-  fs.writeFileSync(LogFiles.TransferNftTxt, '');
-  fs.writeFileSync(LogFiles.TransferNftErrorsTxt, '');
-  fs.writeFileSync(LogFiles.TokenTransferTxt, '');
-  fs.writeFileSync(LogFiles.TokenTransferErrorsTxt, '');
-  fs.writeFileSync(LogFiles.TokenTransferNftTxt, '');
-  fs.writeFileSync(LogFiles.TokenTransferNftErrorsTxt, '');
-  fs.writeFileSync(LogFiles.RetryTransferErrorTxt, '');
+  fs.writeFileSync(LogFiles.TransferNftTxt, '', { flag: 'w' });
+  fs.writeFileSync(LogFiles.TransferNftErrorsTxt, '', { flag: 'w' });
+  fs.writeFileSync(LogFiles.TokenTransferTxt, '', { flag: 'w' });
+  fs.writeFileSync(LogFiles.TokenTransferErrorsTxt, '', { flag: 'w' });
+  fs.writeFileSync(LogFiles.TokenTransferNftTxt, '', { flag: 'w' });
+  fs.writeFileSync(LogFiles.TokenTransferNftErrorsTxt, '', { flag: 'w' });
+  fs.writeFileSync(LogFiles.RetryTransferErrorTxt, '', { flag: 'w' });
   if (!isRetry) {
-    fs.writeFileSync(LogFiles.TransferErrorJson, JSON.stringify([]));
-    fs.writeFileSync(LogFiles.RetryTransferErrorJson, JSON.stringify([]));
+    fs.writeFileSync(LogFiles.TransferErrorJson, JSON.stringify([]), { flag: 'w' });
+    fs.writeFileSync(LogFiles.RetryTransferErrorJson, JSON.stringify([]), { flag: 'w' });
   }
 }
 
