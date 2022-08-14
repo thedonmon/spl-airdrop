@@ -170,7 +170,7 @@ programCommand('airdrop-token-per-nft')
 programCommand('airdrop-nft')
   .requiredOption('-m, --mintIds <path>', 'Mint Ids of NFTs to Send')
   .requiredOption('-al, --airdroplist <path>', 'path to list of wallets to airdrop')
-  .option('-s, --simulate <string>', 'Simuate airdrop')
+  .option('-s, --simulate', 'Simuate airdrop', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .option('-b, --batch-size <number>', 'Ammount to batch transactions', myParseInt, 5)
   .action(async (_, cmd) => {
@@ -179,6 +179,7 @@ programCommand('airdrop-nft')
     );
     let start = now();
     clearLogFiles();
+    console.log(cmd.opts());
     const { keypair, env, mintIds, airdroplist, simulate, rpcUrl, batchSize } = cmd.opts();
     const kp = loadWalletKey(keypair);
     if (!simulate) {
