@@ -20,8 +20,10 @@ import _ from 'lodash';
 import { Metaplex, NftClient } from '@metaplex-foundation/js';
 import * as web3Js from '@solana/web3.js';
 import * as utility from './helpers/utility';
+import path from 'path';
 
-const CACHE_PATH = './.cache';
+const LOG_PATH = './logs';
+const BASE_PATH = __dirname;
 
 program.version('0.0.1').description('A CLI to handle SPL-Token and NFT Airdrops');
 
@@ -260,6 +262,7 @@ programCommand('get-holders', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('get holders', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { env, rpcUrl } = cmd.opts();
     let start = now();
     if (mintIds.length > 0) {
@@ -281,6 +284,7 @@ programCommand('get-holders-cm', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('get holders', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { env, rpcUrl } = cmd.opts();
     let start = now();
     const mintIds = await getCandyMachineMints(verifiedCreatorId, env, rpcUrl);
@@ -306,6 +310,7 @@ programCommand('get-mints-cmid', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { env, version, holders, includeMetadata, rpcUrl } = cmd.opts();
     let start = now();
     const connection =
@@ -357,6 +362,7 @@ programCommand('get-mints-creator', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { env, creatorPosition, holders, includeMetadata, rpcUrl } = cmd.opts();
     let start = now();
     const connection =
@@ -402,6 +408,7 @@ programCommand('get-mints-wallet', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('get wallet mints', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { env, includeMetadata, rpcUrl } = cmd.opts();
     let start = now();
     const connection =
@@ -440,6 +447,7 @@ programCommand('format-snapshot', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     let start = now();
     const holders = spltokenairdrop.formatHoldersList(snapshot);
     const holdersStr = JSON.stringify(holders);
@@ -470,6 +478,7 @@ programCommand('format-snapshot-to-wallets-permint', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     let start = now();
     console.log(cmd.opts())
     const { random, filtermp } = cmd.opts();
@@ -504,6 +513,7 @@ programCommand('exclude-address', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('get txn info', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { env, rpcUrl } = cmd.opts();
     let start = now();
     const stringData = fs.readFileSync(transactions, 'utf-8');
@@ -521,6 +531,7 @@ programCommand('exclude-address', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('get txn info', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { env, rpcUrl } = cmd.opts();
     let start = now();
     const stringData = fs.readFileSync(transactions, 'utf-8');
@@ -538,6 +549,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { amount } = cmd.opts();
     let start = now();
     const stringData = fs.readFileSync(snapshot, 'utf-8');
@@ -556,6 +568,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     console.log(
       chalk.blue(figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })),
     );
+    clearLogFiles();
     const { amount } = cmd.opts();
     let start = now();
     const stringData = fs.readFileSync(snapshot, 'utf-8');
@@ -576,8 +589,12 @@ function myParseInt(value: any) {
   return parsedValue;
 }
 
-if (!fs.existsSync(CACHE_PATH)) {
-  fs.mkdirSync(CACHE_PATH);
+if (!fs.existsSync(LOG_PATH)) {
+  fs.mkdirSync(LOG_PATH);
+}
+
+if (!fs.existsSync(LOG_PATH)) {
+  fs.mkdirSync(LOG_PATH);
 }
 
 function programCommand(
@@ -612,16 +629,25 @@ function setLogLevel(value: any, prev: any) {
 }
 
 function clearLogFiles(isRetry: boolean = false) {
-  fs.writeFileSync(LogFiles.TransferNftTxt, '', { flag: 'w' });
-  fs.writeFileSync(LogFiles.TransferNftErrorsTxt, '', { flag: 'w' });
-  fs.writeFileSync(LogFiles.TokenTransferTxt, '', { flag: 'w' });
-  fs.writeFileSync(LogFiles.TokenTransferErrorsTxt, '', { flag: 'w' });
-  fs.writeFileSync(LogFiles.TokenTransferNftTxt, '', { flag: 'w' });
-  fs.writeFileSync(LogFiles.TokenTransferNftErrorsTxt, '', { flag: 'w' });
-  fs.writeFileSync(LogFiles.RetryTransferErrorTxt, '', { flag: 'w' });
+  overwriteFileIfNotExists(LogFiles.TransferNftTxt);
+  overwriteFileIfNotExists(LogFiles.TransferNftErrorsTxt);
+  overwriteFileIfNotExists(LogFiles.TokenTransferTxt);
+  overwriteFileIfNotExists(LogFiles.TokenTransferErrorsTxt);
+  overwriteFileIfNotExists(LogFiles.TokenTransferNftTxt);
+  overwriteFileIfNotExists(LogFiles.TokenTransferNftErrorsTxt);
+  overwriteFileIfNotExists(LogFiles.RetryTransferErrorTxt);
   if (!isRetry) {
-    fs.writeFileSync(LogFiles.TransferErrorJson, JSON.stringify([]), { flag: 'w' });
-    fs.writeFileSync(LogFiles.RetryTransferErrorJson, JSON.stringify([]), { flag: 'w' });
+    overwriteFileIfNotExists(LogFiles.TransferErrorJson, true);
+    overwriteFileIfNotExists(LogFiles.RetryTransferErrorJson, true);
+  }
+}
+
+function overwriteFileIfNotExists(fileName: string, isJson: boolean = false) {
+  if (!fs.existsSync(fileName)) {
+    isJson ? fs.writeFileSync(fileName, JSON.stringify([]), { flag: 'w' }) : fs.writeFileSync(fileName, '', { flag: 'w' });
+  }
+  else {
+    isJson ? fs.writeFileSync(fileName, JSON.stringify([]), { flag: 'w' }) : fs.writeFileSync(fileName, '', { flag: 'w' });
   }
 }
 

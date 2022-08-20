@@ -291,7 +291,7 @@ function handleError(
   transferErrorTxtPath: string,
 ): void {
   log.error(chalk.red(errorMsg.message));
-  //fs.appendFileSync(LogFiles.TransferNftErrorsTxt, errorMsg.message!);
+  fs.appendFileSync(transferErrorTxtPath, JSON.stringify(errorMsg.message, null, 2) + '\n');
   if (!fs.existsSync(transferErrorJsonPath)) {
     fs.writeFileSync(transferErrorJsonPath, JSON.stringify([]));
   }
