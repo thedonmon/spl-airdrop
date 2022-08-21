@@ -24,6 +24,8 @@ import {
   TransferMintRequest,
 } from './types/transferRequest';
 import { mintToInstructionData } from '@solana/spl-token';
+import ora from 'ora';
+import cliSpinners from 'cli-spinners';
 
 export async function airdropToken(request: AirdropCliRequest): Promise<any> {
   const {
@@ -814,6 +816,8 @@ async function sendAndConfrimInternal(
   },
   commitment: web3Js.Commitment = 'finalized',
 ): Promise<{ txid: string }> {
+  const spinner = getSpinner();
+  spinner.start();
   const txnSerialized = txn.serialize();
   const signature = await sendAndConfirmWithRetry(
     connection,
@@ -821,6 +825,12 @@ async function sendAndConfrimInternal(
     sendOptions,
     commitment,
   );
+  if (signature) {
+    spinner.succeed();
+  }
+  else {
+    spinner.stop();
+  }
   return signature;
 }
 
@@ -858,6 +868,15 @@ function getProgressBar(): cliProgress.SingleBar {
     },
     cliProgress.Presets.shades_classic,
   );
+}
+
+function getSpinner(text?: string) : ora.Ora {
+  const spinner = ora({
+    text: text ?? 'Transferring, please wait...',
+    spinner: cliSpinners.material,
+  });
+  spinner.color = 'yellow';
+  return spinner;
 }
 
 function splicer(value: string, charsFirst: number = 4, charsEnd: number = 3): string {
