@@ -4,6 +4,7 @@
 import * as web3Js from '@solana/web3.js';
 import { sleep, TimeoutError } from './utility';
 import log from 'loglevel';
+import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddress } from '@solana/spl-token';
 
 function getUnixTime(): number {
   return new Date().valueOf() / 1000;
@@ -111,6 +112,16 @@ async function simulateTransaction(
     throw new Error('failed to simulate transaction: ' + JSON.stringify(res.value.err));
   }
   return res;
+}
+
+export async function getOrCreateTokenAccountInstruction(mint: web3Js.PublicKey, user: web3Js.PublicKey, connection: web3Js.Connection, payer: web3Js.PublicKey|null = null): Promise<web3Js.TransactionInstruction | null> {
+  const userTokenAccountAddress = await getAssociatedTokenAddress(mint, user, false);
+  const userTokenAccount = await connection.getParsedAccountInfo(userTokenAccountAddress);
+  if (userTokenAccount.value === null) {
+      return createAssociatedTokenAccountInstruction(payer ? payer : user, userTokenAccountAddress, user, mint);
+  } else {
+      return null;
+  }
 }
 
 const DEFAULT_TIMEOUT = 3 * 60 * 1000; // 3 minutes
