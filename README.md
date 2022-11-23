@@ -61,6 +61,8 @@ npx ts-node src/index.ts airdrop-token \
     -am 1 \
     -al <some path> \
     -r  <rpc url>
+    -m <mint to destination wallet if present will be true>
+    -ob <do not validate token balance of destination wallet>
 ```
 
 #### Airdrop Token per NFTs
@@ -70,7 +72,9 @@ You can use the `get-holders` command to get the format for the airdrop list.
 Theres also an option to get holders, you have to pass the parameter and the candymachineid (verified creator address).
 
 ```sh
-npx ts-node src/index.ts airdrop-token <TokenMintId> \
+npx ts-node src/index.ts airdrop-token-per-nft \
+    -m <TokenMintId>
+    -d 9
     -e mainnet-beta \
     -k ~/.config/solana/key.json \
     -am 3500 \
