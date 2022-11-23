@@ -21,7 +21,6 @@ import { Metaplex, NftClient, Nft } from '@metaplex-foundation/js';
 import * as web3Js from '@solana/web3.js';
 import * as utility from './helpers/utility';
 import path from 'path';
-
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
 
@@ -326,9 +325,9 @@ programCommand('get-mints-cmid', { requireWallet: false })
     if (mints) {
       const mintData = includeMetadata
         ? mints.map((x) => {
-            return { mint: x.address.toBase58(), name: x.name, uri: x.uri };
+            return { mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(), name: x.name, uri: x.uri };
           })
-        : mints.map((x) => x.address.toBase58());
+        : mints.map((x) => x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58());
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${candymachineid}-mints.json`, jsonMints);
       if (holders) {
@@ -379,9 +378,9 @@ programCommand('get-mints-creator', { requireWallet: false })
       console.log('MINTS>>>', mints);
       const mintData = includeMetadata
         ? mints.map((x) => {
-            return { mint: x.address.toBase58(), name: x.name, uri: x.uri };
+            return { mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(), name: x.name, uri: x.uri };
           })
-        : mints.map((x) => x.address.toBase58());
+        : mints.map((x) => x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58());
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${actualCreatorId}-mints.json`, jsonMints);
       if (holders) {
@@ -402,6 +401,7 @@ programCommand('get-mints-creator', { requireWallet: false })
 
 programCommand('get-mints-wallet', { requireWallet: false })
   .argument('<wallet>', 'wallet')
+  .option('-co, --collection <string>', 'certified collection address')
   .option('-m, --include-metadata', 'include metadata info about NFT', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (wallet: string, options, cmd) => {
@@ -409,7 +409,8 @@ programCommand('get-mints-wallet', { requireWallet: false })
       chalk.blue(figlet.textSync('get wallet mints', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, includeMetadata, rpcUrl } = cmd.opts();
+    const { env, includeMetadata, rpcUrl, collection } = cmd.opts();
+    console.log(cmd.opts());
     let start = now();
     const connection =
       rpcUrl != null
@@ -423,21 +424,27 @@ programCommand('get-mints-wallet', { requireWallet: false })
     const mints = await nftClient.findAllByOwner({ owner: walletPk });
     if (mints) {
       const mintData = includeMetadata
-        ? mints.map((x) => {
-            return {
-              mint: x.address.toBase58(),
-              name: x.name,
-              image: x.jsonLoaded ? x.json?.image : "",
-              attributes: x.jsonLoaded ? x.json?.attributes : {},
-            };
-          })
-        : mints.map((x) => x.address.toBase58());
+        ? (collection ? mints.filter(m => m?.collection?.address.toBase58() == collection).map((x) => {
+          return {
+            mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(),
+            name: x.name,
+            image: x.jsonLoaded ? x.json?.image : "",
+            attributes: x.jsonLoaded ? x.json?.attributes : {},
+          };
+        }) : mints.map((x) => {
+          return {
+            mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(),
+            name: x.name,
+            image: x.jsonLoaded ? x.json?.image : "",
+            attributes: x.jsonLoaded ? x.json?.attributes : {},
+          };
+        })
+        ): (collection ? mints.filter(m => m.collection?.address.toBase58() === collection).map((x) => { return (x as any)["mintAddress"].toBase58() }) : mints.map((x) => (x as any)["mintAddress"].toBase58()));
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${wallet}-mints.json`, jsonMints);
     } else {
       log.error('No mints found...');
     }
-
     elapsed(start, true, undefined, true);
   });
 
