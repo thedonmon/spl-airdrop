@@ -6,6 +6,7 @@ import { sleep, TimeoutError } from './utility';
 import log from 'loglevel';
 import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddress } from '@solana/spl-token';
 import * as splToken from '@solana/spl-token';
+import { RpcResponseAndContext } from '@solana/web3.js';
 
 function getUnixTime(): number {
   return new Date().valueOf() / 1000;
@@ -146,7 +147,7 @@ export async function sendAndConfirmWithRetry(
   let blockheight = await connection.getBlockHeight();
   (async () => {
     while (!done && getUnixTime() - startTime < timeout && blockheight < lastValidBlockHeight) {
-      await connection.sendRawTransaction(txn, sendOptions);
+      const sig = await connection.sendRawTransaction(txn, sendOptions);
       await sleep(500);
       blockheight = await connection.getBlockHeight();
     }
@@ -205,3 +206,32 @@ export async function sendAndConfirmWithRetry(
 
   return Promise.resolve({ txid });
 }
+
+export async function sendAndConfirmWithRetryBlockStrategy(connection: web3Js.Connection,
+  txn: Buffer,
+  sendOptions: web3Js.SendOptions = {
+    skipPreflight: true,
+  },
+  commitment: web3Js.Commitment,
+  blockhashResponse?: RpcResponseAndContext<{ blockhash: string, lastValidBlockheight: number }>,
+  timeout = DEFAULT_TIMEOUT,): Promise<{ txid: string }> {
+    const blockhash = blockhashResponse ? blockhashResponse : await connection.getLatestBlockhashAndContext();
+    const lastValidBlockHeight = blockhash.context.slot + 150;
+    let blockheight = await connection.getBlockHeight();
+    let sendTokenSignature = "";
+    while (blockheight < lastValidBlockHeight) {
+      sendTokenSignature = await connection.sendRawTransaction(txn, sendOptions);
+      const sig = await connection.confirmTransaction({
+        signature: sendTokenSignature,
+        blockhash: blockhash.value.blockhash,
+        lastValidBlockHeight,
+      }, commitment);
+      if (!sig.value.err) {
+        break;
+      }
+      await sleep(500);
+      blockheight = await connection.getBlockHeight();
+    }
+    return { txid: sendTokenSignature };
+  }
+

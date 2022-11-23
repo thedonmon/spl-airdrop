@@ -17,7 +17,7 @@ import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
 import { LogFiles } from './helpers/constants';
 import _ from 'lodash';
-import { Metaplex, NftClient } from '@metaplex-foundation/js';
+import { Metaplex, NftClient, Nft } from '@metaplex-foundation/js';
 import * as web3Js from '@solana/web3.js';
 import * as utility from './helpers/utility';
 import path from 'path';
@@ -46,7 +46,7 @@ programCommand('airdrop-token')
   .option(
     '-m, --mint-authority',
     'mint token to destination if keypair is mintauthority',
-    true,
+    false,
   )
   .option('-s, --simulate', 'Simulate airdrop', false)
   .option('-b, --batch-size <number>', 'size to batch run txns', myParseInt, 50)
@@ -69,6 +69,7 @@ programCommand('airdrop-token')
       batchSize,
       rpcUrl,
     } = cmd.opts();
+    console.log(cmd.opts());
     let exclusionArr = [];
     if (exclusionlist) {
       exclusionArr = JSON.parse(fs.readFileSync(`${exclusionlist}`, 'utf-8'));
@@ -321,19 +322,18 @@ programCommand('get-mints-cmid', { requireWallet: false })
       cluster: env as web3Js.Cluster,
     });
     const candyMachinePk = new web3Js.PublicKey(candymachineid);
-    const nftClient = new NftClient(mp);
-    const mints = await nftClient.findAllByCandyMachine(candyMachinePk, version);
+    const mints = await mp.candyMachinesV2().findMintedNfts({ candyMachine: candyMachinePk, version });
     if (mints) {
       const mintData = includeMetadata
         ? mints.map((x) => {
-            return { mint: x.mint.toBase58(), name: x.name, uri: x.uri };
+            return { mint: x.address.toBase58(), name: x.name, uri: x.uri };
           })
-        : mints.map((x) => x.mint.toBase58());
+        : mints.map((x) => x.address.toBase58());
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${candymachineid}-mints.json`, jsonMints);
       if (holders) {
         const result = includeMetadata
-          ? await getSnapshotWithMetadata(mints, rpcUrl)
+          ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl)
           : await getSnapshot(mintData as string[], rpcUrl);
         const jsonObjs = JSON.stringify(result);
         fs.writeFileSync('holdersList.json', jsonObjs);
@@ -374,19 +374,19 @@ programCommand('get-mints-creator', { requireWallet: false })
     });
     const candyMachinePk = new web3Js.PublicKey(actualCreatorId);
     const nftClient = new NftClient(mp);
-    const mints = await nftClient.findAllByCreator(candyMachinePk);
+    const mints = await nftClient.findAllByCreator( { creator: candyMachinePk } );
     if (mints) {
       console.log('MINTS>>>', mints);
       const mintData = includeMetadata
         ? mints.map((x) => {
-            return { mint: x.mint.toBase58(), name: x.metadata.name, uri: x.uri };
+            return { mint: x.address.toBase58(), name: x.name, uri: x.uri };
           })
-        : mints.map((x) => x.mint.toBase58());
+        : mints.map((x) => x.address.toBase58());
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${actualCreatorId}-mints.json`, jsonMints);
       if (holders) {
         const result = includeMetadata
-          ? await getSnapshotWithMetadata(mints, rpcUrl)
+          ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl)
           : await getSnapshot(mintData as string[], rpcUrl);
         const jsonObjs = JSON.stringify(result);
         fs.writeFileSync('holdersList.json', jsonObjs);
@@ -420,18 +420,18 @@ programCommand('get-mints-wallet', { requireWallet: false })
     });
     const walletPk = new web3Js.PublicKey(wallet);
     const nftClient = new NftClient(mp);
-    const mints = await nftClient.findAllByOwner(walletPk);
+    const mints = await nftClient.findAllByOwner({ owner: walletPk });
     if (mints) {
       const mintData = includeMetadata
         ? mints.map((x) => {
             return {
-              mint: x.mint.toBase58(),
-              name: x.metadata.name,
-              image: x.metadata.image,
-              attributes: x.metadata.attributes,
+              mint: x.address.toBase58(),
+              name: x.name,
+              image: x.jsonLoaded ? x.json?.image : "",
+              attributes: x.jsonLoaded ? x.json?.attributes : {},
             };
           })
-        : mints.map((x) => x.mint.toBase58());
+        : mints.map((x) => x.address.toBase58());
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${wallet}-mints.json`, jsonMints);
     } else {

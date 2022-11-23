@@ -17,13 +17,13 @@ import { Transfer } from './types/transfer';
 import { Distribution } from './types/distribution';
 import { ParsedAccountDataType } from './types/accountType';
 import { TransactionInfoOptions } from './types/txnOptions';
-import { getOrCreateTokenAccountInstruction, sendAndConfirmWithRetry } from './helpers/transaction-helper';
+import { getOrCreateTokenAccountInstruction, sendAndConfirmWithRetry, sendAndConfirmWithRetryBlockStrategy } from './helpers/transaction-helper';
 import {
   ITransferRequest,
   TransferErrorRequest,
   TransferMintRequest,
 } from './types/transferRequest';
-import { AccountLayout, mintToInstructionData } from '@solana/spl-token';
+import { AccountLayout, RawAccount } from '@solana/spl-token';
 import ora from 'ora';
 import cliSpinners from 'cli-spinners';
 
@@ -37,7 +37,7 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
     simulate = false,
     batchSize = 250,
     exclusionList = [],
-    mintIfAuthority = true,
+    mintIfAuthority,
     overrideBalanceCheck = false,
   } = request;
   let jsonData: any = {};
@@ -84,12 +84,12 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
           const toWalletPk = new web3Js.PublicKey(toWallet);
           const { instruction: createAtaIx, accountKey: toWalletAta, accountInfo } = 
           await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey, false);
-          let parsedAccountInfo = undefined;
+          let parsedAccountInfo: RawAccount | undefined;
           if (accountInfo) {
             parsedAccountInfo = AccountLayout.decode(accountInfo.data);
           }
-          const parsedAmount = parsedAccountInfo?.amount || undefined;
-          if ((parsedAmount && parsedAmount < amountToTransfer) || !parsedAmount || overrideBalanceCheck) {
+          const parsedAmount = parsedAccountInfo?.amount;
+          if ((parsedAmount && parsedAmount < amountToTransfer && !overrideBalanceCheck) || !parsedAmount || overrideBalanceCheck) {
             await tryMintTo({
               mintObj,
               walletAta: toWalletAta,
@@ -620,7 +620,12 @@ async function tryMintTo(
     mintIfAuthority = true,
     createAtaInstruction,
   } = request;
-  const txn = new web3Js.Transaction();
+  const blockhashResponse = await connection.getLatestBlockhashAndContext();
+  const txn = new web3Js.Transaction({
+    feePayer: keypair.publicKey,
+    blockhash: blockhashResponse.value.blockhash,
+    lastValidBlockHeight: blockhashResponse.value.lastValidBlockHeight,
+  });
   if (createAtaInstruction) {
     txn.add(createAtaInstruction);
   }
@@ -645,7 +650,6 @@ async function tryMintTo(
     );
   }
   txn.add(txnIx);
-  txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
   txn.sign(keypair);
   const signature = await sendAndConfrimInternal(connection, txn);
   let message = `${mintIfAuthority ? 'Minted ' : 'Transferred '} ${totalTransferAmt} of ${splicer(
@@ -773,12 +777,16 @@ async function prepTransfer(
     [keypair],
     splToken.TOKEN_PROGRAM_ID,
   );
-  const txn = new web3Js.Transaction()
+  const blockhashResponse = await connection.getLatestBlockhashAndContext();
+  const txn = new web3Js.Transaction({
+    feePayer: keypair.publicKey,
+    blockhash: blockhashResponse.value.blockhash,
+    lastValidBlockHeight: blockhashResponse.value.lastValidBlockHeight,
+  })
   if (createAtaIx) {
     txn.add(createAtaIx)
   }
   txn.add(txnIns);
-  txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
   txn.feePayer = fromWallet;
   if (createCloseIx) {
     const closeAccount = splToken.createCloseAccountInstruction(
@@ -804,18 +812,19 @@ async function sendAndConfrimInternal(
   sendOptions: web3Js.SendOptions = {
     maxRetries: 0,
     skipPreflight: true,
-    preflightCommitment: 'confirmed',
   },
-  commitment: web3Js.Commitment = 'finalized',
+  commitment: web3Js.Commitment = 'confirmed',
+  blockhashResponse?: web3Js.RpcResponseAndContext<{ blockhash: web3Js.Blockhash, lastValidBlockheight: number }>,
 ): Promise<{ txid: string }> {
   const spinner = getSpinner();
   spinner.start();
   const txnSerialized = txn.serialize();
-  const signature = await sendAndConfirmWithRetry(
+  const signature = await sendAndConfirmWithRetryBlockStrategy(
     connection,
     txnSerialized,
     sendOptions,
     commitment,
+    blockhashResponse,
   );
   if (signature) {
     spinner.succeed();

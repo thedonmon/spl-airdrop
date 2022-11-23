@@ -8,6 +8,7 @@ import { Nft } from '@metaplex-foundation/js';
 import axios from 'axios';
 import { Metadata } from './metaplexschema';
 import { MetadataModel } from '../types/metadata';
+import chalk from 'chalk';
 
 export async function promiseAllInOrder<T>(it: (() => Promise<T>)[]): Promise<Iterable<T>> {
   let ret: T[] = [];
@@ -143,7 +144,7 @@ export async function getSnapshotWithMetadata(
         let filter = {
           memcmp: {
             offset: 0,
-            bytes: item.mint.toBase58(),
+            bytes: item.address.toBase58(),
           },
         };
         let filter2 = {
@@ -168,7 +169,7 @@ export async function getSnapshotWithMetadata(
                 .tokenAmount.uiAmount,
               mints: [
                 {
-                  mint: item.mint.toBase58(),
+                  mint: item.address.toBase58(),
                   name: item.name,
                   image: metadata?.data?.image,
                   attributes: metadata?.data?.attributes,
@@ -187,8 +188,8 @@ export async function getSnapshotWithMetadata(
               let newHolder = tryFindAccount;
               let metadata = await axios.get<MetadataModel>(item.uri);
               newHolder.mints.push({
-                mint: item.mint.toBase58(),
-                name: item.metadata.name,
+                mint: item.address.toBase58(),
+                name: item.name,
                 image: metadata?.data?.image,
                 attributes: metadata?.data?.attributes,
               });
@@ -260,7 +261,7 @@ export function elapsed(
   isCli: boolean = false,
 ) {
   const duration = new Date().getTime() - beginning;
-  const msg = isCli ? 'Safe to quit cmd. Total Elapsed Time: ' : '';
+  const msg = isCli ? chalk.blueBright('Safe to quit cmd. Total Elapsed Time: ') : '';
   if (useLogger) {
     if (logger) {
       msg !== ''
