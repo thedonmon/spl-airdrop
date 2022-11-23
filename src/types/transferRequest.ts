@@ -1,5 +1,5 @@
 import { Account, Mint } from '@solana/spl-token';
-import { Connection, Keypair, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, PublicKey, TransactionInstruction } from '@solana/web3.js';
 
 export interface ITransferRequest<T> {
   toWallet: T;
@@ -21,6 +21,7 @@ export interface TransferErrorRequest<T> extends ITransferRequest<T> {
 
 export interface TransferMintRequest<T> extends ITransferRequest<T> {
   mintObj: Mint;
-  walletAta: Account;
+  walletAta: PublicKey;
   mintIfAuthority?: boolean;
+  createAtaInstruction?: TransactionInstruction
 }

@@ -22,10 +22,10 @@
   "author": "0xDon",
   "license": "MIT",
   "dependencies": {
-    "@metaplex-foundation/js": "^0.11.7",
+    "@metaplex-foundation/js": "^0.17.6",
     "@project-serum/anchor": "0.24.2",
-    "@solana/spl-token": "^0.2.0",
-    "@solana/web3.js": "1.47.3",
+    "@solana/spl-token": "^0.3.6",
+    "@solana/web3.js": "^1.66.2",
     "@types/cli-progress": "^3.9.2",
     "@types/figlet": "^1.5.4",
     "@types/node": "^17.0.21",
@@ -48,6 +48,7 @@
   "devDependencies": {
     "@types/bn.js": "^5.1.0",
     "@types/debug": "^4.1.7",
+    "@types/lodash": "^4.14.189",
     "@types/node-fetch": "^2.6.2"
   }
 }

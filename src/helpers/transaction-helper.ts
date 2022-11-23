@@ -5,6 +5,7 @@ import * as web3Js from '@solana/web3.js';
 import { sleep, TimeoutError } from './utility';
 import log from 'loglevel';
 import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddress } from '@solana/spl-token';
+import * as splToken from '@solana/spl-token';
 
 function getUnixTime(): number {
   return new Date().valueOf() / 1000;
@@ -107,20 +108,23 @@ async function simulateTransaction(
   commitment: web3Js.Commitment,
 ): Promise<web3Js.RpcResponseAndContext<web3Js.SimulatedTransactionResponse>> {
   transaction.recentBlockhash = (await connection.getLatestBlockhash(commitment)).blockhash;
-  const res = await connection.simulateTransaction(transaction);
+  const res = await connection.simulateTransaction(new web3Js.VersionedTransaction(web3Js.VersionedMessage.deserialize(new Uint8Array(transaction.serializeMessage())), transaction.signatures.map(x => new Uint8Array(x.signature!))), {
+    commitment,
+    replaceRecentBlockhash: true,
+  } );
   if (res.value.err) {
     throw new Error('failed to simulate transaction: ' + JSON.stringify(res.value.err));
   }
   return res;
 }
 
-export async function getOrCreateTokenAccountInstruction(mint: web3Js.PublicKey, user: web3Js.PublicKey, connection: web3Js.Connection, payer: web3Js.PublicKey|null = null): Promise<web3Js.TransactionInstruction | null> {
-  const userTokenAccountAddress = await getAssociatedTokenAddress(mint, user, false);
-  const userTokenAccount = await connection.getParsedAccountInfo(userTokenAccountAddress);
-  if (userTokenAccount.value === null) {
-      return createAssociatedTokenAccountInstruction(payer ? payer : user, userTokenAccountAddress, user, mint);
+export async function getOrCreateTokenAccountInstruction(mint: web3Js.PublicKey, user: web3Js.PublicKey, connection: web3Js.Connection, payer: web3Js.PublicKey|null = null, offCurve: boolean = false): Promise<{ instruction?: web3Js.TransactionInstruction, accountKey: web3Js.PublicKey, accountInfo?: web3Js.AccountInfo<Buffer> }> {
+  const userTokenAccountAddress = await getAssociatedTokenAddress(mint, user, offCurve, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID);
+  const userTokenAccount = await connection.getAccountInfo(userTokenAccountAddress, 'confirmed');
+  if (userTokenAccount === null) {
+      return { instruction: createAssociatedTokenAccountInstruction(payer ? payer : user, userTokenAccountAddress, user, mint), accountKey: userTokenAccountAddress };
   } else {
-      return null;
+      return { accountKey: userTokenAccountAddress, accountInfo: userTokenAccount } ;
   }
 }
 
@@ -159,7 +163,10 @@ export async function sendAndConfirmWithRetry(
     if (!confirmation) throw new TimeoutError(txid);
 
     if (confirmation.err) {
-      const tx = await connection.getTransaction(txid);
+      const tx = await connection.getTransaction(txid, {
+        commitment: 'confirmed',
+        maxSupportedTransactionVersion: 2
+      });
       log.error(tx?.meta?.logMessages?.join('\n'));
       log.error(confirmation.err);
       throw new Error('Transaction failed: Custom instruction error');

@@ -17,13 +17,13 @@ import { Transfer } from './types/transfer';
 import { Distribution } from './types/distribution';
 import { ParsedAccountDataType } from './types/accountType';
 import { TransactionInfoOptions } from './types/txnOptions';
-import { sendAndConfirmWithRetry } from './helpers/transaction-helper';
+import { getOrCreateTokenAccountInstruction, sendAndConfirmWithRetry } from './helpers/transaction-helper';
 import {
   ITransferRequest,
   TransferErrorRequest,
   TransferMintRequest,
 } from './types/transferRequest';
-import { mintToInstructionData } from '@solana/spl-token';
+import { AccountLayout, mintToInstructionData } from '@solana/spl-token';
 import ora from 'ora';
 import cliSpinners from 'cli-spinners';
 
@@ -82,23 +82,17 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
         let start = utility.now();
         try {
           const toWalletPk = new web3Js.PublicKey(toWallet);
-          const walletAta = await utility.promiseRetry(() =>
-            splToken.getOrCreateAssociatedTokenAccount(
-              connection,
-              keypair,
-              mintPk,
-              toWalletPk,
-              false,
-              'confirmed',
-              { skipPreflight: true, maxRetries: 100 },
-              splToken.TOKEN_PROGRAM_ID,
-              splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-            ),
-          );
-          if (walletAta.amount < amountToTransfer || overrideBalanceCheck) {
+          const { instruction: createAtaIx, accountKey: toWalletAta, accountInfo } = 
+          await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey, false);
+          let parsedAccountInfo = undefined;
+          if (accountInfo) {
+            parsedAccountInfo = AccountLayout.decode(accountInfo.data);
+          }
+          const parsedAmount = parsedAccountInfo?.amount || undefined;
+          if ((parsedAmount && parsedAmount < amountToTransfer) || !parsedAmount || overrideBalanceCheck) {
             await tryMintTo({
               mintObj,
-              walletAta,
+              walletAta: toWalletAta,
               tokenMint: mintPk,
               connection,
               keypair,
@@ -107,6 +101,7 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
               fromWallet,
               toWallet: toWalletPk,
               mintIfAuthority,
+              createAtaInstruction: createAtaIx
             });
           } else {
             log.warn(chalk.yellow(`${toWallet} already has token ${mint}`));
@@ -623,12 +618,17 @@ async function tryMintTo(
     fromWallet,
     toWallet,
     mintIfAuthority = true,
+    createAtaInstruction,
   } = request;
+  const txn = new web3Js.Transaction();
+  if (createAtaInstruction) {
+    txn.add(createAtaInstruction);
+  }
   let txnIx: web3Js.TransactionInstruction;
   if (mintObj.mintAuthority?.toBase58() == keypair.publicKey.toBase58() && mintIfAuthority) {
     txnIx = splToken.createMintToInstruction(
       mintObj.address,
-      walletAta.address,
+      walletAta,
       keypair.publicKey,
       totalTransferAmt!,
       undefined,
@@ -637,14 +637,14 @@ async function tryMintTo(
   } else {
     txnIx = splToken.createTransferInstruction(
       ownerAta,
-      walletAta.address,
+      walletAta,
       fromWallet,
       totalTransferAmt!,
       [keypair],
       splToken.TOKEN_PROGRAM_ID,
     );
   }
-  const txn = new web3Js.Transaction().add(txnIx);
+  txn.add(txnIx);
   txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
   txn.sign(keypair);
   const signature = await sendAndConfrimInternal(connection, txn);
@@ -764,28 +764,20 @@ async function prepTransfer(
     request;
   const toWalletPk = new web3Js.PublicKey(toWallet);
   const mintPk = tokenMint!;
-  const walletAta = await utility.promiseRetry(() =>
-    splToken.getOrCreateAssociatedTokenAccount(
-      connection,
-      keypair,
-      mintPk,
-      toWalletPk,
-      false,
-      'finalized',
-      { skipPreflight: true, maxRetries: 100 },
-      splToken.TOKEN_PROGRAM_ID,
-      splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
-    ),
-  );
+  const { instruction: createAtaIx, accountKey: walletAta } = await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey);
   const txnIns = splToken.createTransferInstruction(
     ownerAta,
-    walletAta.address,
+    walletAta,
     fromWallet,
     totalTransferAmt!,
     [keypair],
     splToken.TOKEN_PROGRAM_ID,
   );
-  const txn = new web3Js.Transaction().add(txnIns);
+  const txn = new web3Js.Transaction()
+  if (createAtaIx) {
+    txn.add(createAtaIx)
+  }
+  txn.add(txnIns);
   txn.recentBlockhash = (await connection.getLatestBlockhash()).blockhash;
   txn.feePayer = fromWallet;
   if (createCloseIx) {
