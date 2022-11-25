@@ -26,6 +26,10 @@ import {
 import { AccountLayout, RawAccount } from '@solana/spl-token';
 import ora from 'ora';
 import cliSpinners from 'cli-spinners';
+import { getConnection } from './helpers/utility';
+import { TransactionAudit } from './types/transactionaudit';
+import { BN } from 'bn.js';
+import { PublicKey } from '@metaplex-foundation/js';
 
 export async function airdropToken(request: AirdropCliRequest): Promise<any> {
   const {
@@ -458,6 +462,37 @@ export function formatNftDropByWallet(
     mintTfer.push(holderAcct);
   }
   return mintTfer;
+}
+
+export async function parseTransactions(
+  transactionObjects: TransactionAudit[],
+  cluster: string = 'devnet',
+  rpcUrl: string | null = null,
+): Promise<void> {
+  let connection = getConnection(cluster, rpcUrl);
+  const progressBar = getProgressBar();
+  const results: any[] = [];
+  for (var txn of transactionObjects) {
+    const response = await connection.getTransaction(txn.TransactionSignature, {
+      maxSupportedTransactionVersion: 2,
+    });
+    if (response == null) {
+      log.warn(`Transaction ${txn.TransactionSignature} not found`);
+      continue;
+    }
+    const parsed = await connection.getParsedTransaction(txn.TransactionSignature);
+    // @ts-ignore
+    console.log('SOL TRANSFERRED:', parsed?.transaction.message.instructions.flatMap(x => x?.parsed.info)[0].lamports / web3Js.LAMPORTS_PER_SOL)
+    const message = response.transaction.message;
+    const meta = response.meta;
+    const recipient = message.getAccountKeys().staticAccountKeys.find((pubkey) => !pubkey.equals(new PublicKey(txn.WalletId)) && !pubkey.equals(new PublicKey('11111111111111111111111111111111')));
+    const accountIndex = message.getAccountKeys().staticAccountKeys.findIndex((pubkey) => pubkey.equals(recipient!));
+    const preBalance = new BN(meta?.preBalances[accountIndex] || 0).div(new BN(web3Js.LAMPORTS_PER_SOL));
+    const postBalance = new BN(meta?.postBalances[accountIndex] || 0).div(new BN(web3Js.LAMPORTS_PER_SOL))
+    console.log(`Transaction ${txn.TransactionSignature} from ${txn.WalletId} to ${recipient?.toBase58()} ${txn.TokenAllocation} preBalance: ${preBalance} postBalance: ${postBalance}`);
+    progressBar.increment();
+  }
+
 }
 
 export function formatNftDropByWalletMultiplier(

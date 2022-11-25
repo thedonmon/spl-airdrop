@@ -21,6 +21,7 @@ import { Metaplex, NftClient, Nft } from '@metaplex-foundation/js';
 import * as web3Js from '@solana/web3.js';
 import * as utility from './helpers/utility';
 import path from 'path';
+import { TransactionAudit } from './types/transactionaudit';
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
 
@@ -562,6 +563,24 @@ programCommand('format-mint-drop', { requireWallet: false })
     const stringData = fs.readFileSync(snapshot, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
     const holders = spltokenairdrop.formatNftDropByWalletMultiplier(jsonData, amount as number);
+    const holdersStr = JSON.stringify(holders);
+    fs.writeFileSync('nfttransfer.json', holdersStr);
+    log.log('Holders written to holders.json');
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('parse-txns', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    const { env, rpcUrl } = cmd.opts();
+    let start = now();
+    const stringData = fs.readFileSync(snapshot, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any;
+    const holders = spltokenairdrop.parseTransactions(jsonData as TransactionAudit[], env, rpcUrl);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('nfttransfer.json', holdersStr);
     log.log('Holders written to holders.json');
