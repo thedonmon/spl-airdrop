@@ -546,6 +546,16 @@ export function formatWalletList(snapShotFilePath: string): string[] {
   return wallets;
 }
 
+export function formatFromHolderListToWalletList(snapShotFilePath: string): string[] {
+  const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
+  const jsonData = JSON.parse(stringData) as HolderAccount[];
+  let wallets: string[] = [];
+  for (var wallet of jsonData) {
+    wallets.push(wallet.walletId);
+  }
+  return wallets;
+}
+
 export function downloadMintImages(mintsPath: string): Promise<any> {
   const mintData = fs.readFileSync(mintsPath, 'utf-8');
   const jsonData = JSON.parse(mintData) as any[];

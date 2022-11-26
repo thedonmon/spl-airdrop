@@ -17,7 +17,7 @@ import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
 import { LogFiles } from './helpers/constants';
 import _ from 'lodash';
-import { Metaplex, NftClient, Nft } from '@metaplex-foundation/js';
+import { Metaplex, NftClient, Nft, keypairIdentity, PrintNewEditionInput } from '@metaplex-foundation/js';
 import * as web3Js from '@solana/web3.js';
 import * as utility from './helpers/utility';
 import path from 'path';
@@ -301,6 +301,59 @@ programCommand('get-holders-cm', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
+  programCommand('mint-edition', { requireWallet: true })
+  .argument('<mastereditionid>', 'Mint Master Edition Id')
+  .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
+  .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+  .action(async (mastereditionid: string, options, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('print editions', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    const { keypair, env, rpcUrl, airdroplist} = cmd.opts();
+    let start = now();
+    const kp = loadWalletKey(keypair);
+    const masterEditionId = new PublicKey(mastereditionid);
+    const connection =
+      rpcUrl != null
+        ? new web3Js.Connection(rpcUrl)
+        : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = new Metaplex(connection, {
+      cluster: env as web3Js.Cluster,
+    }).use(keypairIdentity(kp));
+    let wallets: string[] = []
+    if (airdroplist) {
+      wallets = JSON.parse(fs.readFileSync(`${airdroplist}`, 'utf-8')) as string[];
+      if (wallets?.length <= 0 || wallets == null) {
+        log.error("No wallets found in airdrop list");
+        return
+      }
+    }
+    for (let wallet of wallets) {
+      if (wallet.includes('.sol')) {
+        wallet = await utility.getPublicKeyFromSolDomain(wallet, connection);
+      }
+      const newMint = web3Js.Keypair.generate();
+      const printNewEditionInput: PrintNewEditionInput = {
+        originalMint: masterEditionId,
+        newOwner: new PublicKey(wallet),
+        newMint
+      }
+      const NFT = await mp.nfts().printNewEdition(printNewEditionInput, {
+        commitment: 'confirmed',
+        confirmOptions: {
+          skipPreflight: true,
+        }
+      }).catch((e) => { console.error(e); })
+      const result = NFT?.editionAddress.toBase58()
+      const jsonObjs = JSON.stringify(result);
+      console.log(`${wallet} receieved edition ${result}`);
+    }
+    
+    elapsed(start, true, undefined, true);
+  });
+
+
 programCommand('get-mints-cmid', { requireWallet: false })
   .argument('<candymachineid>', 'Candy Machine Id')
   .option('-v, --version <number>', 'candy machine version (default 2)', myParseInt, 2)
@@ -374,7 +427,7 @@ programCommand('get-mints-creator', { requireWallet: false })
     });
     const candyMachinePk = new web3Js.PublicKey(actualCreatorId);
     const nftClient = new NftClient(mp);
-    const mints = await nftClient.findAllByCreator( { creator: candyMachinePk } );
+    const mints = await nftClient.findAllByCreator( { creator: candyMachinePk, position: creatorPosition } );
     if (mints) {
       console.log('MINTS>>>', mints);
       const mintData = includeMetadata
@@ -464,14 +517,14 @@ programCommand('format-snapshot', { requireWallet: false })
     elapsed(start, true);
   });
 
-programCommand('format-snapshot-to-wallets', { requireWallet: false })
-  .argument('<snapshot>', 'snapshot path')
-  .action(async (snapshot: string, _, cmd) => {
+programCommand('format-holderlist-to-wallets', { requireWallet: false })
+  .argument('<holderlist>', 'holderlist path')
+  .action(async (holderlist: string, _, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
     );
     let start = now();
-    const wallets = spltokenairdrop.formatWalletList(snapshot);
+    const wallets = spltokenairdrop.formatFromHolderListToWalletList(holderlist);
     const walletsStr = JSON.stringify(wallets);
     fs.writeFileSync('wallets.json', walletsStr);
     log.log('Wallets written to wallets.json');
