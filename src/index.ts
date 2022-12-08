@@ -22,6 +22,7 @@ import * as web3Js from '@solana/web3.js';
 import * as utility from './helpers/utility';
 import path from 'path';
 import { TransactionAudit } from './types/transactionaudit';
+import { fetchMintMetdata } from './spltokenairdrop';
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
 
@@ -499,6 +500,37 @@ programCommand('get-mints-wallet', { requireWallet: false })
     } else {
       log.error('No mints found...');
     }
+    elapsed(start, true, undefined, true);
+  });
+
+
+  programCommand('fetch-mint-metadata', { requireWallet: false })
+  .argument('<mints>', 'mints')
+  .option('-m, --include-metadata', 'include metadata info about NFT', false)
+  .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+  .option('-b, --batch-size <number>', 'size to batch run', myParseInt, 100)
+  .action(async (mints: string, options, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('get mints metadata', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    const { env, includeMetadata, rpcUrl, batchSize } = cmd.opts();
+    console.log(cmd.opts());
+    let start = now();
+    const connection =
+      rpcUrl != null
+        ? new web3Js.Connection(rpcUrl)
+        : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = new Metaplex(connection, {
+      cluster: env as web3Js.Cluster,
+    });
+    const mintList = JSON.parse(fs.readFileSync(mints, 'utf8')) as string[];
+    if (!mintList) {
+      log.error('Mint list not in correct format. Make sure it is a list of mint ids');
+      return;
+    }
+    await fetchMintMetdata(mintList, mp, includeMetadata, batchSize);
+    
     elapsed(start, true, undefined, true);
   });
 

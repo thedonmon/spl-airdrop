@@ -29,7 +29,7 @@ import cliSpinners from 'cli-spinners';
 import { getConnection } from './helpers/utility';
 import { TransactionAudit } from './types/transactionaudit';
 import { BN } from 'bn.js';
-import { PublicKey } from '@metaplex-foundation/js';
+import { Metaplex, PublicKey } from '@metaplex-foundation/js';
 
 export async function airdropToken(request: AirdropCliRequest): Promise<any> {
   const {
@@ -446,6 +446,49 @@ export async function getTransferTransactionInfo(
   }
   progressBar.stop();
   return accountsToExclude;
+}
+
+export async function fetchMintMetdata(
+  mintIds: string[],
+  metaplex: Metaplex,
+  includeUrlMetadata: boolean = false,
+  batchSize: number = 100,
+): Promise<any> {
+  const mintPks = mintIds.map((x) => new web3Js.PublicKey(x));
+  const progressBar = getProgressBar();
+  progressBar.start(mintIds.length, 0);
+  const mints = await metaplex.nfts().findAllByMintList({ mints: mintPks });
+  const chunkedMints = utility.chunkItems(mints, batchSize);
+  let mintOutput: any[] = [];
+  let start = utility.now();
+  for (const mintChunk of chunkedMints) {
+    await Promise.all(
+      mintChunk.map(async (mint, index) => {
+        try {
+          const uri = mint?.uri;
+          let jsonMetadata = { attributes: [], image: ''};
+          if (!mint?.jsonLoaded && uri && includeUrlMetadata && utility.isValidHttpUrl(uri)) {
+            jsonMetadata = (await axios.get<any>(uri)).data;
+          }
+          let mintOutputItem: any = {
+            mintId: mint?.model == "metadata" ? (mint as any)["mintAddress"].toBase58() : mint?.mint.address.toBase58(),
+            name: mint?.name,
+            symbol: mint?.symbol,
+            image: jsonMetadata.image,
+            attributes: mint?.jsonLoaded ? mint?.json : jsonMetadata.attributes,
+          };
+          mintOutput.push(mintOutputItem);
+          progressBar.increment();
+        } catch (err: any) {
+          log.error(err);
+        }
+      }),
+    );
+  }
+  fs.writeFileSync('mint-metadata.json', JSON.stringify(mintOutput, null, 2));
+  progressBar.stop();
+  utility.elapsed(start, true, log);
+  return;
 }
 
 export function formatNftDropByWallet(

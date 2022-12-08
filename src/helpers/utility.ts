@@ -357,3 +357,13 @@ export async function getSolDomainsFromPublicKey(wallet: string, connection?: we
   allDomainNames.forEach((domain,i) => console.log(` ${i+1}.`,domain));
   return allDomainNames;
 }
+
+export function isValidHttpUrl(testUrl: string): boolean {
+  let url;
+  try {
+    url = new URL(testUrl);
+  } catch (_) {
+    return false;
+  }
+  return url.protocol === "http:" || url.protocol === "https:";
+}
