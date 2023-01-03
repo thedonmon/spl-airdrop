@@ -23,5 +23,5 @@ export interface TransferMintRequest<T> extends ITransferRequest<T> {
   mintObj: Mint;
   walletAta: PublicKey;
   mintIfAuthority?: boolean;
-  createAtaInstruction?: TransactionInstruction
+  createAtaInstruction?: TransactionInstruction;
 }

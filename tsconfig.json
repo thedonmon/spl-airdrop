@@ -1,13 +1,15 @@
 {
   "compilerOptions": {
-    "target": "es6",
+    "target": "ESNext",
     "lib": ["es2017", "es2019", "dom", "es6"],
-    "module": "commonjs",
+    "module": "CommonJS",
     "outDir": "./dist",
     "rootDir": "./src",
     "sourceMap": false,
     "strict": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "skipDefaultLibCheck": true,
+    "skipLibCheck": true
   },
   "moduleResolution": "node" /* Specify module resolution strategy: 'node' (Node.js) or 'classic' (TypeScript pre-1.6). */,
   "baseUrl": ".",
@@ -17,7 +19,6 @@
   "resolveJsonModule": true,
   // "rootDirs": [],                        /* List of root folders whose combined content represents the structure of the project at runtime. */
   // "typeRoots": [],                       /* List of folders to include type definitions from. */
-  "typeRoots": ["node_modules/@types", "/types"],
   // "allowSyntheticDefaultImports": true,  /* Allow default imports from modules with no default export. This does not affect code emit, just typechecking. */
   // "preserveSymlinks": true,              /* Do not resolve the real path of symlinks. */
   // "allowUmdGlobalAccess": true,          /* Allow accessing UMD globals from modules. */
@@ -27,13 +28,10 @@
   // "mapRoot": "",                         /* Specify the location where debugger should locate map files instead of generated locations. */
   // "inlineSourceMap": true,               /* Emit a single file with source maps instead of having a separate file. */
   // "inlineSources": true,                 /* Emit the source alongside the sourcemaps within a single file; requires '--inlineSourceMap' or '--sourceMap' to be set. */
-
+  "typeRoots": ["node_modules/@types", "/types"],
   /* Experimental Options */
   "experimentalDecorators": true /* Enables experimental support for ES7 decorators. */,
   // "emitDecoratorMetadata": true,         /* Enables experimental support for emitting type metadata for decorators. */
-
-  /* Advanced Options */
-  "skipLibCheck": true /* Skip type checking of declaration files. */,
   "forceConsistentCasingInFileNames": true /* Disallow inconsistently-cased references to the same file. */,
   "include": ["./src/**.ts"],
   "exclude": ["node_modules"]

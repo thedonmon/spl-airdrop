@@ -6,7 +6,7 @@ import base58 from 'bs58';
 import { PublicKey } from '@solana/web3.js';
 type StringPublicKey = string;
 
-import { BN } from '@project-serum/anchor';
+import BN from 'bn.js';
 
 export enum MetadataKey {
   Uninitialized = 0,

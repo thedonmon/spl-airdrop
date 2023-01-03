@@ -17,7 +17,11 @@ import { Transfer } from './types/transfer';
 import { Distribution } from './types/distribution';
 import { ParsedAccountDataType } from './types/accountType';
 import { TransactionInfoOptions } from './types/txnOptions';
-import { getOrCreateTokenAccountInstruction, sendAndConfirmWithRetry, sendAndConfirmWithRetryBlockStrategy } from './helpers/transaction-helper';
+import {
+  getOrCreateTokenAccountInstruction,
+  sendAndConfirmWithRetry,
+  sendAndConfirmWithRetryBlockStrategy,
+} from './helpers/transaction-helper';
 import {
   ITransferRequest,
   TransferErrorRequest,
@@ -86,14 +90,27 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
         let start = utility.now();
         try {
           const toWalletPk = new web3Js.PublicKey(toWallet);
-          const { instruction: createAtaIx, accountKey: toWalletAta, accountInfo } = 
-          await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey, false);
+          const {
+            instruction: createAtaIx,
+            accountKey: toWalletAta,
+            accountInfo,
+          } = await getOrCreateTokenAccountInstruction(
+            mintPk,
+            toWalletPk,
+            connection,
+            keypair.publicKey,
+            false,
+          );
           let parsedAccountInfo: RawAccount | undefined;
           if (accountInfo) {
             parsedAccountInfo = AccountLayout.decode(accountInfo.data);
           }
           const parsedAmount = parsedAccountInfo?.amount;
-          if ((parsedAmount && parsedAmount < amountToTransfer && !overrideBalanceCheck) || !parsedAmount || overrideBalanceCheck) {
+          if (
+            (parsedAmount && parsedAmount < amountToTransfer && !overrideBalanceCheck) ||
+            !parsedAmount ||
+            overrideBalanceCheck
+          ) {
             await tryMintTo({
               mintObj,
               walletAta: toWalletAta,
@@ -105,7 +122,7 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
               fromWallet,
               toWallet: toWalletPk,
               mintIfAuthority,
-              createAtaInstruction: createAtaIx
+              createAtaInstruction: createAtaIx,
             });
           } else {
             log.warn(chalk.yellow(`${toWallet} already has token ${mint}`));
@@ -466,12 +483,15 @@ export async function fetchMintMetdata(
       mintChunk.map(async (mint, index) => {
         try {
           const uri = mint?.uri;
-          let jsonMetadata = { attributes: [], image: ''};
+          let jsonMetadata = { attributes: [], image: '' };
           if (!mint?.jsonLoaded && uri && includeUrlMetadata && utility.isValidHttpUrl(uri)) {
             jsonMetadata = (await axios.get<any>(uri)).data;
           }
           let mintOutputItem: any = {
-            mintId: mint?.model == "metadata" ? (mint as any)["mintAddress"].toBase58() : mint?.mint.address.toBase58(),
+            mintId:
+              mint?.model == 'metadata'
+                ? (mint as any)['mintAddress'].toBase58()
+                : mint?.mint.address.toBase58(),
             name: mint?.name,
             symbol: mint?.symbol,
             image: jsonMetadata.image,
@@ -524,45 +544,62 @@ export async function parseTransactions(
       continue;
     }
     const parsed = await connection.getParsedTransaction(txn.TransactionSignature);
-    // @ts-ignore
-    console.log('SOL TRANSFERRED:', parsed?.transaction.message.instructions.flatMap(x => x?.parsed.info)[0].lamports / web3Js.LAMPORTS_PER_SOL)
+    console.log(
+      'SOL TRANSFERRED:',
+      // @ts-ignore
+      parsed?.transaction.message.instructions.flatMap((x) => x?.parsed.info)[0].lamports /
+        web3Js.LAMPORTS_PER_SOL,
+    );
     const message = response.transaction.message;
     const meta = response.meta;
-    const recipient = message.getAccountKeys().staticAccountKeys.find((pubkey) => !pubkey.equals(new PublicKey(txn.WalletId)) && !pubkey.equals(new PublicKey('11111111111111111111111111111111')));
-    const accountIndex = message.getAccountKeys().staticAccountKeys.findIndex((pubkey) => pubkey.equals(recipient!));
-    const preBalance = new BN(meta?.preBalances[accountIndex] || 0).div(new BN(web3Js.LAMPORTS_PER_SOL));
-    const postBalance = new BN(meta?.postBalances[accountIndex] || 0).div(new BN(web3Js.LAMPORTS_PER_SOL))
-    console.log(`Transaction ${txn.TransactionSignature} from ${txn.WalletId} to ${recipient?.toBase58()} ${txn.TokenAllocation} preBalance: ${preBalance} postBalance: ${postBalance}`);
+    const recipient = message
+      .getAccountKeys()
+      .staticAccountKeys.find(
+        (pubkey) =>
+          !pubkey.equals(new PublicKey(txn.WalletId)) &&
+          !pubkey.equals(new PublicKey('11111111111111111111111111111111')),
+      );
+    const accountIndex = message
+      .getAccountKeys()
+      .staticAccountKeys.findIndex((pubkey) => pubkey.equals(recipient!));
+    const preBalance = new BN(meta?.preBalances[accountIndex] || 0).div(
+      new BN(web3Js.LAMPORTS_PER_SOL),
+    );
+    const postBalance = new BN(meta?.postBalances[accountIndex] || 0).div(
+      new BN(web3Js.LAMPORTS_PER_SOL),
+    );
+    console.log(
+      `Transaction ${txn.TransactionSignature} from ${txn.WalletId} to ${recipient?.toBase58()} ${
+        txn.TokenAllocation
+      } preBalance: ${preBalance} postBalance: ${postBalance}`,
+    );
     progressBar.increment();
   }
-
 }
 
 export function formatNftDropByWalletMultiplier(
-    holderAccounts: {wallet_id: string, nft_count: number}[],
-    multiplierPerMint: number,
-  ): Distribution[] {
-    let mintTfer: Distribution[] = [];
-    for (var holder of holderAccounts) {
-      let nftsToDrop = holder.nft_count * multiplierPerMint;
-      if (holder.nft_count >= 10 && holder.nft_count < 30) {
-        nftsToDrop = holder.nft_count + 1;
-      }
-      else if (holder.nft_count >= 30) {
-        nftsToDrop = holder.nft_count + 2;
-      }
-      else {
-        nftsToDrop = holder.nft_count;
-      }
-      const holderAcct: Distribution = {
-        wallet: holder.wallet_id,
-        totalOwnedNftsCount: holder.nft_count,
-        nFtsToAirdrop: nftsToDrop,
-      };
-      mintTfer.push(holderAcct);
+  holderAccounts: { wallet_id: string; nft_count: number }[],
+  multiplierPerMint: number,
+): Distribution[] {
+  let mintTfer: Distribution[] = [];
+  for (var holder of holderAccounts) {
+    let nftsToDrop = holder.nft_count * multiplierPerMint;
+    if (holder.nft_count >= 10 && holder.nft_count < 30) {
+      nftsToDrop = holder.nft_count + 1;
+    } else if (holder.nft_count >= 30) {
+      nftsToDrop = holder.nft_count + 2;
+    } else {
+      nftsToDrop = holder.nft_count;
     }
-    return mintTfer;
+    const holderAcct: Distribution = {
+      wallet: holder.wallet_id,
+      totalOwnedNftsCount: holder.nft_count,
+      nFtsToAirdrop: nftsToDrop,
+    };
+    mintTfer.push(holderAcct);
   }
+  return mintTfer;
+}
 
 export function formatHoldersList(snapShotFilePath: string): HolderAccount[] {
   const stringData = fs.readFileSync(snapShotFilePath, 'utf-8');
@@ -674,7 +711,7 @@ export function formatHoldersToWallet(
     for (var wallet of jsonData) {
       //wallets.push(`${wallet.walletId}:${wallet.mintIds.length}`);
       for (var mint of wallet.mintIds) {
-          wallets.push(wallet.walletId);
+        wallets.push(wallet.walletId);
       }
     }
   } else {
@@ -856,7 +893,8 @@ async function prepTransfer(
     request;
   const toWalletPk = new web3Js.PublicKey(toWallet);
   const mintPk = tokenMint!;
-  const { instruction: createAtaIx, accountKey: walletAta } = await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey);
+  const { instruction: createAtaIx, accountKey: walletAta } =
+    await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey);
   const txnIns = splToken.createTransferInstruction(
     ownerAta,
     walletAta,
@@ -870,9 +908,9 @@ async function prepTransfer(
     feePayer: keypair.publicKey,
     blockhash: blockhashResponse.value.blockhash,
     lastValidBlockHeight: blockhashResponse.value.lastValidBlockHeight,
-  })
+  });
   if (createAtaIx) {
-    txn.add(createAtaIx)
+    txn.add(createAtaIx);
   }
   txn.add(txnIns);
   txn.feePayer = fromWallet;
@@ -902,7 +940,10 @@ async function sendAndConfrimInternal(
     skipPreflight: true,
   },
   commitment: web3Js.Commitment = 'confirmed',
-  blockhashResponse?: web3Js.RpcResponseAndContext<{ blockhash: web3Js.Blockhash, lastValidBlockheight: number }>,
+  blockhashResponse?: web3Js.RpcResponseAndContext<{
+    blockhash: web3Js.Blockhash;
+    lastValidBlockheight: number;
+  }>,
 ): Promise<{ txid: string }> {
   const spinner = getSpinner();
   spinner.start();
@@ -916,8 +957,7 @@ async function sendAndConfrimInternal(
   );
   if (signature) {
     spinner.succeed();
-  }
-  else {
+  } else {
     spinner.stop();
   }
   return signature;
@@ -959,7 +999,7 @@ function getProgressBar(): cliProgress.SingleBar {
   );
 }
 
-function getSpinner(text?: string) : ora.Ora {
+function getSpinner(text?: string): ora.Ora {
   const spinner = ora({
     text: text ?? 'Transferring, please wait...',
     spinner: cliSpinners.material,

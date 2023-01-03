@@ -12,17 +12,24 @@ import {
   loadWalletKey,
   now,
 } from './helpers/utility';
-import { PublicKey } from '@solana/web3.js';
 import { HolderAccount } from './types/holderaccounts';
 import { getCandyMachineMints } from './helpers/metaplexmint';
 import { LogFiles } from './helpers/constants';
 import _ from 'lodash';
-import { Metaplex, NftClient, Nft, keypairIdentity, PrintNewEditionInput } from '@metaplex-foundation/js';
+import {
+  Metaplex,
+  NftClient,
+  Nft,
+  keypairIdentity,
+  PrintNewEditionInput,
+  PublicKey,
+} from '@metaplex-foundation/js';
 import * as web3Js from '@solana/web3.js';
 import * as utility from './helpers/utility';
-import path from 'path';
 import { TransactionAudit } from './types/transactionaudit';
 import { fetchMintMetdata } from './spltokenairdrop';
+import cliSpinners from 'cli-spinners';
+import ora from 'ora';
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
 
@@ -44,11 +51,7 @@ programCommand('airdrop-token')
     'send amount regardless of destination wallet balance',
     false,
   )
-  .option(
-    '-m, --mint-authority',
-    'mint token to destination if keypair is mintauthority',
-    false,
-  )
+  .option('-m, --mint-authority', 'mint token to destination if keypair is mintauthority', false)
   .option('-s, --simulate', 'Simulate airdrop', false)
   .option('-b, --batch-size <number>', 'size to batch run txns', myParseInt, 50)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
@@ -302,7 +305,7 @@ programCommand('get-holders-cm', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
-  programCommand('mint-edition', { requireWallet: true })
+programCommand('mint-edition', { requireWallet: true })
   .argument('<mastereditionid>', 'Mint Master Edition Id')
   .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
@@ -311,23 +314,26 @@ programCommand('get-holders-cm', { requireWallet: false })
       chalk.blue(figlet.textSync('print editions', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { keypair, env, rpcUrl, airdroplist} = cmd.opts();
+    const { keypair, env, rpcUrl, airdroplist } = cmd.opts();
     let start = now();
     const kp = loadWalletKey(keypair);
     const masterEditionId = new PublicKey(mastereditionid);
     const connection =
       rpcUrl != null
-        ? new web3Js.Connection(rpcUrl)
+        ? new web3Js.Connection(rpcUrl, {
+            httpAgent: false,
+            commitment: 'confirmed',
+          })
         : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
     const mp = new Metaplex(connection, {
       cluster: env as web3Js.Cluster,
     }).use(keypairIdentity(kp));
-    let wallets: string[] = []
+    let wallets: string[] = [];
     if (airdroplist) {
       wallets = JSON.parse(fs.readFileSync(`${airdroplist}`, 'utf-8')) as string[];
       if (wallets?.length <= 0 || wallets == null) {
-        log.error("No wallets found in airdrop list");
-        return
+        log.error('No wallets found in airdrop list');
+        return;
       }
     }
     for (let wallet of wallets) {
@@ -338,22 +344,26 @@ programCommand('get-holders-cm', { requireWallet: false })
       const printNewEditionInput: PrintNewEditionInput = {
         originalMint: masterEditionId,
         newOwner: new PublicKey(wallet),
-        newMint
-      }
-      const NFT = await mp.nfts().printNewEdition(printNewEditionInput, {
-        commitment: 'confirmed',
-        confirmOptions: {
-          skipPreflight: true,
-        }
-      }).catch((e) => { console.error(e); })
-      const result = NFT?.editionAddress.toBase58()
+        newMint,
+      };
+      const NFT = await mp
+        .nfts()
+        .printNewEdition(printNewEditionInput, {
+          commitment: 'confirmed',
+          confirmOptions: {
+            skipPreflight: true,
+          },
+        })
+        .catch((e) => {
+          console.error(e);
+        });
+      const result = NFT?.editionAddress.toBase58();
       const jsonObjs = JSON.stringify(result);
       console.log(`${wallet} receieved edition ${result}`);
     }
-    
+
     elapsed(start, true, undefined, true);
   });
-
 
 programCommand('get-mints-cmid', { requireWallet: false })
   .argument('<candymachineid>', 'Candy Machine Id')
@@ -368,21 +378,39 @@ programCommand('get-mints-cmid', { requireWallet: false })
     clearLogFiles();
     const { env, version, holders, includeMetadata, rpcUrl } = cmd.opts();
     let start = now();
+    const spinner = getSpinner();
+    spinner.start();
     const connection =
       rpcUrl != null
-        ? new web3Js.Connection(rpcUrl)
+        ? new web3Js.Connection(rpcUrl, {
+            httpAgent: false,
+            commitment: 'confirmed',
+          })
         : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
     const mp = new Metaplex(connection, {
       cluster: env as web3Js.Cluster,
     });
     const candyMachinePk = new web3Js.PublicKey(candymachineid);
-    const mints = await mp.candyMachinesV2().findMintedNfts({ candyMachine: candyMachinePk, version });
+    const mints = await mp
+      .candyMachinesV2()
+      .findMintedNfts({ candyMachine: candyMachinePk, version });
     if (mints) {
       const mintData = includeMetadata
         ? mints.map((x) => {
-            return { mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(), name: x.name, uri: x.uri };
+            return {
+              mint:
+                x.model == 'metadata'
+                  ? (x as any)['mintAddress'].toBase58()
+                  : x.mint.address.toBase58(),
+              name: x.name,
+              uri: x.uri,
+            };
           })
-        : mints.map((x) => x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58());
+        : mints.map((x) =>
+            x.model == 'metadata'
+              ? (x as any)['mintAddress'].toBase58()
+              : x.mint.address.toBase58(),
+          );
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${candymachineid}-mints.json`, jsonMints);
       if (holders) {
@@ -397,7 +425,7 @@ programCommand('get-mints-cmid', { requireWallet: false })
     } else {
       log.error('No mints found...');
     }
-
+    spinner.stop();
     elapsed(start, true, undefined, true);
   });
 
@@ -419,38 +447,60 @@ programCommand('get-mints-creator', { requireWallet: false })
     clearLogFiles();
     const { env, creatorPosition, holders, includeMetadata, rpcUrl } = cmd.opts();
     let start = now();
+    const spinner = getSpinner();
+    spinner.start();
     const connection =
       rpcUrl != null
-        ? new web3Js.Connection(rpcUrl)
-        : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
-    const mp = new Metaplex(connection, {
-      cluster: env as web3Js.Cluster,
-    });
-    const candyMachinePk = new web3Js.PublicKey(actualCreatorId);
-    const nftClient = new NftClient(mp);
-    const mints = await nftClient.findAllByCreator( { creator: candyMachinePk, position: creatorPosition } );
-    if (mints) {
-      console.log('MINTS>>>', mints);
-      const mintData = includeMetadata
-        ? mints.map((x) => {
-            return { mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(), name: x.name, uri: x.uri };
+        ? new web3Js.Connection(rpcUrl, {
+            httpAgent: false,
+            commitment: 'confirmed',
           })
-        : mints.map((x) => x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58());
-      const jsonMints = JSON.stringify(mintData);
-      fs.writeFileSync(`${actualCreatorId}-mints.json`, jsonMints);
-      if (holders) {
-        const result = includeMetadata
-          ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl)
-          : await getSnapshot(mintData as string[], rpcUrl);
-        const jsonObjs = JSON.stringify(result);
-        fs.writeFileSync('holdersList.json', jsonObjs);
-        log.log('Holders written to holders.json');
-        log.log(result);
+        : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = Metaplex.make(connection);
+    const candyMachinePk = new web3Js.PublicKey(actualCreatorId);
+    try {
+      const mints = await mp
+        .nfts()
+        .findAllByCreator({ creator: candyMachinePk, position: creatorPosition });
+      if (mints) {
+        console.log('MINTS>>>', mints);
+        const mintData = includeMetadata
+          ? mints.map((x) => {
+              return {
+                mint:
+                  x.model == 'metadata'
+                    ? (x as any)['mintAddress'].toBase58()
+                    : x.mint.address.toBase58(),
+                name: x.name,
+                uri: x.uri,
+              };
+            })
+          : mints.map((x) =>
+              x.model == 'metadata'
+                ? (x as any)['mintAddress'].toBase58()
+                : x.mint.address.toBase58(),
+            );
+        const jsonMints = JSON.stringify(mintData);
+        fs.writeFileSync(`${actualCreatorId}-mints.json`, jsonMints);
+        if (holders) {
+          const result = includeMetadata
+            ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl)
+            : await getSnapshot(mintData as string[], rpcUrl);
+          const jsonObjs = JSON.stringify(result);
+          fs.writeFileSync('holdersList.json', jsonObjs);
+          log.log('Holders written to holders.json');
+          log.log(result);
+        }
+        spinner.succeed();
+      } else {
+        log.error('No mints found...');
+        spinner.fail('No mints found...');
       }
-    } else {
-      log.error('No mints found...');
+    } catch (e) {
+      spinner.fail('Error getting mints');
+      console.log('ERROR', e);
     }
-
+    spinner.stop();
     elapsed(start, true, undefined, true);
   });
 
@@ -467,9 +517,14 @@ programCommand('get-mints-wallet', { requireWallet: false })
     const { env, includeMetadata, rpcUrl, collection } = cmd.opts();
     console.log(cmd.opts());
     let start = now();
+    const spinner = getSpinner();
+    spinner.start();
     const connection =
       rpcUrl != null
-        ? new web3Js.Connection(rpcUrl)
+        ? new web3Js.Connection(rpcUrl, {
+            httpAgent: false,
+            commitment: 'confirmed',
+          })
         : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
     const mp = new Metaplex(connection, {
       cluster: env as web3Js.Cluster,
@@ -479,39 +534,58 @@ programCommand('get-mints-wallet', { requireWallet: false })
     const mints = await nftClient.findAllByOwner({ owner: walletPk });
     if (mints) {
       const mintData = includeMetadata
-        ? (collection ? mints.filter(m => m?.collection?.address.toBase58() == collection).map((x) => {
-          return {
-            mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(),
-            name: x.name,
-            image: x.jsonLoaded ? x.json?.image : "",
-            attributes: x.jsonLoaded ? x.json?.attributes : {},
-          };
-        }) : mints.map((x) => {
-          return {
-            mint: x.model == "metadata" ? (x as any)["mintAddress"].toBase58() : x.mint.address.toBase58(),
-            name: x.name,
-            image: x.jsonLoaded ? x.json?.image : "",
-            attributes: x.jsonLoaded ? x.json?.attributes : {},
-          };
-        })
-        ): (collection ? mints.filter(m => m.collection?.address.toBase58() === collection).map((x) => { return (x as any)["mintAddress"].toBase58() }) : mints.map((x) => (x as any)["mintAddress"].toBase58()));
+        ? collection
+          ? mints
+              .filter((m) => m?.collection?.address.toBase58() == collection)
+              .map((x) => {
+                return {
+                  mint:
+                    x.model == 'metadata'
+                      ? (x as any)['mintAddress'].toBase58()
+                      : x.mint.address.toBase58(),
+                  name: x.name,
+                  image: x.jsonLoaded ? x.json?.image : '',
+                  attributes: x.jsonLoaded ? x.json?.attributes : {},
+                };
+              })
+          : mints.map((x) => {
+              return {
+                mint:
+                  x.model == 'metadata'
+                    ? (x as any)['mintAddress'].toBase58()
+                    : x.mint.address.toBase58(),
+                name: x.name,
+                image: x.jsonLoaded ? x.json?.image : '',
+                attributes: x.jsonLoaded ? x.json?.attributes : {},
+              };
+            })
+        : collection
+        ? mints
+            .filter((m) => m.collection?.address.toBase58() === collection)
+            .map((x) => {
+              return (x as any)['mintAddress'].toBase58();
+            })
+        : mints.map((x) => (x as any)['mintAddress'].toBase58());
       const jsonMints = JSON.stringify(mintData);
       fs.writeFileSync(`${wallet}-mints.json`, jsonMints);
+      spinner.succeed();
     } else {
       log.error('No mints found...');
     }
+    spinner.stop();
     elapsed(start, true, undefined, true);
   });
 
-
-  programCommand('fetch-mint-metadata', { requireWallet: false })
+programCommand('fetch-mint-metadata', { requireWallet: false })
   .argument('<mints>', 'mints')
   .option('-m, --include-metadata', 'include metadata info about NFT', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .option('-b, --batch-size <number>', 'size to batch run', myParseInt, 100)
   .action(async (mints: string, options, cmd) => {
     console.log(
-      chalk.blue(figlet.textSync('get mints metadata', { horizontalLayout: 'controlled smushing' })),
+      chalk.blue(
+        figlet.textSync('get mints metadata', { horizontalLayout: 'controlled smushing' }),
+      ),
     );
     clearLogFiles();
     const { env, includeMetadata, rpcUrl, batchSize } = cmd.opts();
@@ -519,7 +593,10 @@ programCommand('get-mints-wallet', { requireWallet: false })
     let start = now();
     const connection =
       rpcUrl != null
-        ? new web3Js.Connection(rpcUrl)
+        ? new web3Js.Connection(rpcUrl, {
+            httpAgent: false,
+            commitment: 'confirmed',
+          })
         : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
     const mp = new Metaplex(connection, {
       cluster: env as web3Js.Cluster,
@@ -530,7 +607,7 @@ programCommand('get-mints-wallet', { requireWallet: false })
       return;
     }
     await fetchMintMetdata(mintList, mp, includeMetadata, batchSize);
-    
+
     elapsed(start, true, undefined, true);
   });
 
@@ -573,14 +650,9 @@ programCommand('format-snapshot-to-wallets-permint', { requireWallet: false })
     );
     clearLogFiles();
     let start = now();
-    console.log(cmd.opts())
+    console.log(cmd.opts());
     const { random, filtermp } = cmd.opts();
-    const wallets = spltokenairdrop.formatHoldersToWallet(
-      snapshot,
-      true,
-      random,
-      filtermp,
-    );
+    const wallets = spltokenairdrop.formatHoldersToWallet(snapshot, true, random, filtermp);
     const walletsStr = JSON.stringify(wallets);
     fs.writeFileSync('walletsPerMint.json', walletsStr);
     log.log('Wallets written to wallets.json');
@@ -618,7 +690,7 @@ programCommand('exclude-address', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
-  programCommand('get-count', { requireWallet: false })
+programCommand('get-count', { requireWallet: false })
   .argument('<transactions>', 'transactions path')
   .action(async (transactions: string, _, cmd) => {
     console.log(
@@ -630,7 +702,7 @@ programCommand('exclude-address', { requireWallet: false })
     const stringData = fs.readFileSync(transactions, 'utf-8');
     const jsonData = JSON.parse(stringData) as any[];
     console.log(jsonData);
-    const sum  = utility.calculateSum(jsonData, 'nFtsToAirdrop');
+    const sum = utility.calculateSum(jsonData, 'nFtsToAirdrop');
     console.log('total: ', sum);
     elapsed(start, true, undefined, true);
   });
@@ -654,7 +726,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
-  programCommand('parse-txns', { requireWallet: false })
+programCommand('parse-txns', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
   .action(async (snapshot: string, _, cmd) => {
     console.log(
@@ -672,7 +744,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
-  programCommand('format-mint-drop', { requireWallet: false })
+programCommand('format-mint-drop', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
   .requiredOption('-a, --amount <number>', 'Amount of NFTs per mint')
   .action(async (snapshot: string, _, cmd) => {
@@ -753,12 +825,24 @@ function clearLogFiles(isRetry: boolean = false) {
   }
 }
 
+function getSpinner(text?: string, color?: ora.Color): ora.Ora {
+  const spinner = ora({
+    text: text ? text : 'Calling rpc to get mints, please wait',
+    spinner: cliSpinners.material,
+  });
+  spinner.color = color ? color : 'yellow';
+  return spinner;
+}
+
 function overwriteFileIfNotExists(fileName: string, isJson: boolean = false) {
   if (!fs.existsSync(fileName)) {
-    isJson ? fs.writeFileSync(fileName, JSON.stringify([]), { flag: 'w' }) : fs.writeFileSync(fileName, '', { flag: 'w' });
-  }
-  else {
-    isJson ? fs.writeFileSync(fileName, JSON.stringify([]), { flag: 'w' }) : fs.writeFileSync(fileName, '', { flag: 'w' });
+    isJson
+      ? fs.writeFileSync(fileName, JSON.stringify([]), { flag: 'w' })
+      : fs.writeFileSync(fileName, '', { flag: 'w' });
+  } else {
+    isJson
+      ? fs.writeFileSync(fileName, JSON.stringify([]), { flag: 'w' })
+      : fs.writeFileSync(fileName, '', { flag: 'w' });
   }
 }
 

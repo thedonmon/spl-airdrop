@@ -4,7 +4,10 @@
 import * as web3Js from '@solana/web3.js';
 import { sleep, TimeoutError } from './utility';
 import log from 'loglevel';
-import { createAssociatedTokenAccountInstruction, getAssociatedTokenAddress } from '@solana/spl-token';
+import {
+  createAssociatedTokenAccountInstruction,
+  getAssociatedTokenAddress,
+} from '@solana/spl-token';
 import * as splToken from '@solana/spl-token';
 import { RpcResponseAndContext } from '@solana/web3.js';
 
@@ -109,23 +112,53 @@ async function simulateTransaction(
   commitment: web3Js.Commitment,
 ): Promise<web3Js.RpcResponseAndContext<web3Js.SimulatedTransactionResponse>> {
   transaction.recentBlockhash = (await connection.getLatestBlockhash(commitment)).blockhash;
-  const res = await connection.simulateTransaction(new web3Js.VersionedTransaction(web3Js.VersionedMessage.deserialize(new Uint8Array(transaction.serializeMessage())), transaction.signatures.map(x => new Uint8Array(x.signature!))), {
-    commitment,
-    replaceRecentBlockhash: true,
-  } );
+  const res = await connection.simulateTransaction(
+    new web3Js.VersionedTransaction(
+      web3Js.VersionedMessage.deserialize(new Uint8Array(transaction.serializeMessage())),
+      transaction.signatures.map((x) => new Uint8Array(x.signature!)),
+    ),
+    {
+      commitment,
+      replaceRecentBlockhash: true,
+    },
+  );
   if (res.value.err) {
     throw new Error('failed to simulate transaction: ' + JSON.stringify(res.value.err));
   }
   return res;
 }
 
-export async function getOrCreateTokenAccountInstruction(mint: web3Js.PublicKey, user: web3Js.PublicKey, connection: web3Js.Connection, payer: web3Js.PublicKey|null = null, offCurve: boolean = false): Promise<{ instruction?: web3Js.TransactionInstruction, accountKey: web3Js.PublicKey, accountInfo?: web3Js.AccountInfo<Buffer> }> {
-  const userTokenAccountAddress = await getAssociatedTokenAddress(mint, user, offCurve, splToken.TOKEN_PROGRAM_ID, splToken.ASSOCIATED_TOKEN_PROGRAM_ID);
+export async function getOrCreateTokenAccountInstruction(
+  mint: web3Js.PublicKey,
+  user: web3Js.PublicKey,
+  connection: web3Js.Connection,
+  payer: web3Js.PublicKey | null = null,
+  offCurve: boolean = false,
+): Promise<{
+  instruction?: web3Js.TransactionInstruction;
+  accountKey: web3Js.PublicKey;
+  accountInfo?: web3Js.AccountInfo<Buffer>;
+}> {
+  const userTokenAccountAddress = await getAssociatedTokenAddress(
+    mint,
+    user,
+    offCurve,
+    splToken.TOKEN_PROGRAM_ID,
+    splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
+  );
   const userTokenAccount = await connection.getAccountInfo(userTokenAccountAddress, 'confirmed');
   if (userTokenAccount === null) {
-      return { instruction: createAssociatedTokenAccountInstruction(payer ? payer : user, userTokenAccountAddress, user, mint), accountKey: userTokenAccountAddress };
+    return {
+      instruction: createAssociatedTokenAccountInstruction(
+        payer ? payer : user,
+        userTokenAccountAddress,
+        user,
+        mint,
+      ),
+      accountKey: userTokenAccountAddress,
+    };
   } else {
-      return { accountKey: userTokenAccountAddress, accountInfo: userTokenAccount } ;
+    return { accountKey: userTokenAccountAddress, accountInfo: userTokenAccount };
   }
 }
 
@@ -166,7 +199,7 @@ export async function sendAndConfirmWithRetry(
     if (confirmation.err) {
       const tx = await connection.getTransaction(txid, {
         commitment: 'confirmed',
-        maxSupportedTransactionVersion: 2
+        maxSupportedTransactionVersion: 2,
       });
       log.error(tx?.meta?.logMessages?.join('\n'));
       log.error(confirmation.err);
@@ -207,31 +240,37 @@ export async function sendAndConfirmWithRetry(
   return Promise.resolve({ txid });
 }
 
-export async function sendAndConfirmWithRetryBlockStrategy(connection: web3Js.Connection,
+export async function sendAndConfirmWithRetryBlockStrategy(
+  connection: web3Js.Connection,
   txn: Buffer,
   sendOptions: web3Js.SendOptions = {
     skipPreflight: true,
   },
   commitment: web3Js.Commitment,
-  blockhashResponse?: RpcResponseAndContext<{ blockhash: string, lastValidBlockheight: number }>,
-  timeout = DEFAULT_TIMEOUT,): Promise<{ txid: string }> {
-    const blockhash = blockhashResponse ? blockhashResponse : await connection.getLatestBlockhashAndContext();
-    const lastValidBlockHeight = blockhash.context.slot + 150;
-    let blockheight = await connection.getBlockHeight();
-    let sendTokenSignature = "";
-    while (blockheight < lastValidBlockHeight) {
-      sendTokenSignature = await connection.sendRawTransaction(txn, sendOptions);
-      const sig = await connection.confirmTransaction({
+  blockhashResponse?: RpcResponseAndContext<{ blockhash: string; lastValidBlockheight: number }>,
+  timeout = DEFAULT_TIMEOUT,
+): Promise<{ txid: string }> {
+  const blockhash = blockhashResponse
+    ? blockhashResponse
+    : await connection.getLatestBlockhashAndContext();
+  const lastValidBlockHeight = blockhash.context.slot + 150;
+  let blockheight = await connection.getBlockHeight();
+  let sendTokenSignature = '';
+  while (blockheight < lastValidBlockHeight) {
+    sendTokenSignature = await connection.sendRawTransaction(txn, sendOptions);
+    const sig = await connection.confirmTransaction(
+      {
         signature: sendTokenSignature,
         blockhash: blockhash.value.blockhash,
         lastValidBlockHeight,
-      }, commitment);
-      if (!sig.value.err) {
-        break;
-      }
-      await sleep(500);
-      blockheight = await connection.getBlockHeight();
+      },
+      commitment,
+    );
+    if (!sig.value.err) {
+      break;
     }
-    return { txid: sendTokenSignature };
+    await sleep(500);
+    blockheight = await connection.getBlockHeight();
   }
-
+  return { txid: sendTokenSignature };
+}

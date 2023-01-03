@@ -9,7 +9,12 @@ import axios from 'axios';
 import { Metadata } from './metaplexschema';
 import { MetadataModel } from '../types/metadata';
 import chalk from 'chalk';
-import { getAllDomains, getDomainKey, NameRegistryState, performReverseLookup } from '@bonfida/spl-name-service';
+import {
+  getAllDomains,
+  getDomainKey,
+  NameRegistryState,
+  performReverseLookup,
+} from '@bonfida/spl-name-service';
 
 export async function promiseAllInOrder<T>(it: (() => Promise<T>)[]): Promise<Iterable<T>> {
   let ret: T[] = [];
@@ -334,27 +339,40 @@ export function truthy<T>(value: T): value is Truthy<T> {
   return !!value;
 }
 
-export function calculateSum(obj: any[], field: string) { 
-   const res = obj.map(items => items[field])
-  .reduce((prev, curr) => prev + curr, 0);
+export function calculateSum(obj: any[], field: string) {
+  const res = obj.map((items) => items[field]).reduce((prev, curr) => prev + curr, 0);
   return res;
 }
 
-export async function getPublicKeyFromSolDomain(domain: string, connection?: web3Js.Connection, env: string  = "devnet", rpcUrl: string = ""):Promise<string>{
+export async function getPublicKeyFromSolDomain(
+  domain: string,
+  connection?: web3Js.Connection,
+  env: string = 'devnet',
+  rpcUrl: string = '',
+): Promise<string> {
   const conn = connection || getConnection(env, rpcUrl);
   const { pubkey } = await getDomainKey(domain);
   const owner = (await NameRegistryState.retrieve(conn, pubkey)).registry.owner.toBase58();
-  console.log(`The owner of SNS Domain: ${domain} is: `,owner);
+  console.log(`The owner of SNS Domain: ${domain} is: `, owner);
   return owner;
 }
 
-export async function getSolDomainsFromPublicKey(wallet: string, connection?: web3Js.Connection, env: string  = "devnet", rpcUrl: string = ""):Promise<string[]>{
+export async function getSolDomainsFromPublicKey(
+  wallet: string,
+  connection?: web3Js.Connection,
+  env: string = 'devnet',
+  rpcUrl: string = '',
+): Promise<string[]> {
   const ownerWallet = new web3Js.PublicKey(wallet);
   const conn = connection || getConnection(env, rpcUrl);
   const allDomainKeys = await getAllDomains(conn, ownerWallet);
-  const allDomainNames = await Promise.all(allDomainKeys.map(key=>{return performReverseLookup(conn,key)}));
-  console.log(`${wallet} owns the following SNS domains:`)
-  allDomainNames.forEach((domain,i) => console.log(` ${i+1}.`,domain));
+  const allDomainNames = await Promise.all(
+    allDomainKeys.map((key) => {
+      return performReverseLookup(conn, key);
+    }),
+  );
+  console.log(`${wallet} owns the following SNS domains:`);
+  allDomainNames.forEach((domain, i) => console.log(` ${i + 1}.`, domain));
   return allDomainNames;
 }
 
@@ -365,5 +383,5 @@ export function isValidHttpUrl(testUrl: string): boolean {
   } catch (_) {
     return false;
   }
-  return url.protocol === "http:" || url.protocol === "https:";
+  return url.protocol === 'http:' || url.protocol === 'https:';
 }

@@ -50,3 +50,4 @@ holder*.json
 *wallet*.json
 *snap*.json
 src/images/*
+mint-*.json
