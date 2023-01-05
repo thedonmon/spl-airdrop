@@ -11,7 +11,7 @@ import * as utility from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
 import { AirdropCliRequest, AirdropTypeRequest } from './types/cli';
 import { LogFiles, MarketPlaces } from './helpers/constants';
-import { HolderAccount } from './types/holderaccounts';
+import { HolderAccount, HolderAccountMetadata } from './types/holderaccounts';
 import { TransferError } from './types/errorTransfer';
 import { Transfer } from './types/transfer';
 import { Distribution } from './types/distribution';
@@ -963,16 +963,21 @@ async function sendAndConfrimInternal(
   return signature;
 }
 
-function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
+export function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
   return transfers.filter((x) => isNotMarketPlace(x.wallet));
 }
 
-function filterMarketPlacesByHolders(transfers: HolderAccount[]): HolderAccount[] {
+export function filterMarketPlacesByHolders(transfers: HolderAccount[]): HolderAccount[] {
   let arr = _.filter(transfers, (x) => isNotMarketPlace(x.walletId));
   return arr;
 }
 
-function filterMarketPlacesByWallet(wallets: string[]): string[] {
+export function filterMarketPlacesByHoldersMetadata(transfers: HolderAccountMetadata[]): HolderAccountMetadata[] {
+  let arr = _.filter(transfers, (x) => isNotMarketPlace(x.walletId));
+  return arr;
+}
+
+export function filterMarketPlacesByWallet(wallets: string[]): string[] {
   return wallets.filter((x) => isNotMarketPlace(x));
 }
 

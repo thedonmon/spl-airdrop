@@ -370,13 +370,14 @@ programCommand('get-mints-cmid', { requireWallet: false })
   .option('-v, --version <number>', 'candy machine version (default 2)', myParseInt, 2)
   .option('-h, --holders', 'get holders list', false)
   .option('-m, --include-metadata', 'include metadata info about NFT', false)
+  .option('-f, --filter-mktp', 'filter out known mktplaces', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (candymachineid: string, options, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, version, holders, includeMetadata, rpcUrl } = cmd.opts();
+    const { env, version, holders, includeMetadata, rpcUrl, filterMktp } = cmd.opts();
     let start = now();
     const spinner = getSpinner();
     spinner.start();
@@ -415,8 +416,72 @@ programCommand('get-mints-cmid', { requireWallet: false })
       fs.writeFileSync(`${candymachineid}-mints.json`, jsonMints);
       if (holders) {
         const result = includeMetadata
-          ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl)
-          : await getSnapshot(mintData as string[], rpcUrl);
+          ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl, filterMktp)
+          : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
+        const jsonObjs = JSON.stringify(result);
+        fs.writeFileSync('holdersList.json', jsonObjs);
+        log.log('Holders written to holders.json');
+        log.log(result);
+      }
+    } else {
+      log.error('No mints found...');
+    }
+    spinner.stop();
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('get-mints-ua', { requireWallet: false })
+  .argument('<updateauthority>', 'update authority')
+  .option('-h, --holders', 'get holders list', false)
+  .option('-m, --include-metadata', 'include metadata info about NFT', false)
+  .option('-f, --filter-mktp', 'filter out known mktplaces', false)
+  .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+  .action(async (updateauthority: string, options, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    const { env, holders, includeMetadata, rpcUrl, filterMktp } = cmd.opts();
+    let start = now();
+    const spinner = getSpinner();
+    spinner.start();
+    const connection =
+      rpcUrl != null
+        ? new web3Js.Connection(rpcUrl, {
+            httpAgent: false,
+            commitment: 'confirmed',
+          })
+        : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = new Metaplex(connection, {
+      cluster: env as web3Js.Cluster,
+    });
+    const updateAuthority = new web3Js.PublicKey(updateauthority);
+    const mints = await mp
+      .nfts()
+      .findAllByUpdateAuthority({ updateAuthority: updateAuthority });
+    if (mints) {
+      const mintData = includeMetadata
+        ? mints.map((x) => {
+            return {
+              mint:
+                x.model == 'metadata'
+                  ? (x as any)['mintAddress'].toBase58()
+                  : x.mint.address.toBase58(),
+              name: x.name,
+              uri: x.uri,
+            };
+          })
+        : mints.map((x) =>
+            x.model == 'metadata'
+              ? (x as any)['mintAddress'].toBase58()
+              : x.mint.address.toBase58(),
+          );
+      const jsonMints = JSON.stringify(mintData);
+      fs.writeFileSync(`${updateauthority}-mints.json`, jsonMints);
+      if (holders) {
+        const result = includeMetadata
+          ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl, filterMktp)
+          : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
         const jsonObjs = JSON.stringify(result);
         fs.writeFileSync('holdersList.json', jsonObjs);
         log.log('Holders written to holders.json');
@@ -439,13 +504,14 @@ programCommand('get-mints-creator', { requireWallet: false })
   )
   .option('-h, --holders', 'get holders list', false)
   .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', false)
+  .option('-f, --filter-mktp', 'filter out known mktplaces', false)
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (actualCreatorId: string, options, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, creatorPosition, holders, includeMetadata, rpcUrl } = cmd.opts();
+    const { env, creatorPosition, holders, includeMetadata, rpcUrl, filterMktp } = cmd.opts();
     let start = now();
     const spinner = getSpinner();
     spinner.start();
@@ -484,8 +550,8 @@ programCommand('get-mints-creator', { requireWallet: false })
         fs.writeFileSync(`${actualCreatorId}-mints.json`, jsonMints);
         if (holders) {
           const result = includeMetadata
-            ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl)
-            : await getSnapshot(mintData as string[], rpcUrl);
+            ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl, filterMktp)
+            : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
           const jsonObjs = JSON.stringify(result);
           fs.writeFileSync('holdersList.json', jsonObjs);
           log.log('Holders written to holders.json');

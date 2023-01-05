@@ -9,6 +9,7 @@ import axios from 'axios';
 import { Metadata } from './metaplexschema';
 import { MetadataModel } from '../types/metadata';
 import chalk from 'chalk';
+import { filterMarketPlacesByWallet, filterMarketPlacesByHolders, filterMarketPlacesByHoldersMetadata } from '../spltokenairdrop';
 import {
   getAllDomains,
   getDomainKey,
@@ -77,6 +78,7 @@ export async function getSnapshot(
   mintIds: string[],
   rpcUrl: string | null = null,
   cluster: string = 'devnet',
+  filterMktplaces: boolean = false,
 ): Promise<HolderAccount[]> {
   let accounts: HolderAccount[] = [];
   const connection = getConnection(cluster, rpcUrl);
@@ -132,6 +134,7 @@ export async function getSnapshot(
         }
       }),
     );
+  filterMktplaces ? (accounts = filterMarketPlacesByHolders(accounts)) : accounts;
   return accounts;
 }
 
@@ -139,6 +142,7 @@ export async function getSnapshotWithMetadata(
   mints: Nft[],
   rpcUrl: string | null = null,
   cluster: string = 'devnet',
+  filterMktplaces: boolean = false,
 ): Promise<HolderAccountMetadata[]> {
   let accounts: HolderAccountMetadata[] = [];
   const connection = getConnection(cluster, rpcUrl);
@@ -209,6 +213,7 @@ export async function getSnapshotWithMetadata(
         }
       }),
     );
+  filterMktplaces ? (accounts = filterMarketPlacesByHoldersMetadata(accounts)) : accounts;
   return accounts;
 }
 
