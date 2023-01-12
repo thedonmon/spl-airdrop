@@ -30,6 +30,10 @@ import { TransactionAudit } from './types/transactionaudit';
 import { fetchMintMetdata } from './spltokenairdrop';
 import cliSpinners from 'cli-spinners';
 import ora from 'ora';
+import { Format } from './types/formatenum';
+import { FormatObject } from './types/formatObject';
+import { Options, Parser } from '@json2csv/plainjs';
+
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
 
@@ -430,7 +434,7 @@ programCommand('get-mints-cmid', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
-  programCommand('get-mints-ua', { requireWallet: false })
+programCommand('get-mints-ua', { requireWallet: false })
   .argument('<updateauthority>', 'update authority')
   .option('-h, --holders', 'get holders list', false)
   .option('-m, --include-metadata', 'include metadata info about NFT', false)
@@ -456,9 +460,7 @@ programCommand('get-mints-cmid', { requireWallet: false })
       cluster: env as web3Js.Cluster,
     });
     const updateAuthority = new web3Js.PublicKey(updateauthority);
-    const mints = await mp
-      .nfts()
-      .findAllByUpdateAuthority({ updateAuthority: updateAuthority });
+    const mints = await mp.nfts().findAllByUpdateAuthority({ updateAuthority: updateAuthority });
     if (mints) {
       const mintData = includeMetadata
         ? mints.map((x) => {
@@ -679,30 +681,34 @@ programCommand('fetch-mint-metadata', { requireWallet: false })
 
 programCommand('format-snapshot', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
   .action(async (snapshot: string, _, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
     let start = now();
+    const { format } = cmd.opts();
+    const fileFormat = format as Format;
     const holders = spltokenairdrop.formatHoldersList(snapshot);
-    const holdersStr = JSON.stringify(holders);
-    fs.writeFileSync('holdersList.json', holdersStr);
-    log.log('Holders written to holders.json');
+    writeToFile('holdersList', holders, fileFormat);
+    log.log(`Holders written to holderList.${format}`);
     elapsed(start, true);
   });
 
 programCommand('format-holderlist-to-wallets', { requireWallet: false })
   .argument('<holderlist>', 'holderlist path')
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
   .action(async (holderlist: string, _, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
     );
+    const { format } = cmd.opts();
+    const fileFormat = format as Format;
     let start = now();
     const wallets = spltokenairdrop.formatFromHolderListToWalletList(holderlist);
-    const walletsStr = JSON.stringify(wallets);
-    fs.writeFileSync('wallets.json', walletsStr);
-    log.log('Wallets written to wallets.json');
+    writeToFile('wallets', wallets, fileFormat);
+    log.info(`Wallets written to wallets.${fileFormat}`);
     elapsed(start, true, undefined, true);
   });
 
@@ -710,18 +716,19 @@ programCommand('format-snapshot-to-wallets-permint', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
   .option('-rn, --random', 'randomize per mint true or false', false)
   .option('-f, --filtermp', 'filter marketplace true or false', false)
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
   .action(async (snapshot: string, _, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
     let start = now();
-    console.log(cmd.opts());
+    const { format } = cmd.opts();
+    const fileFormat = format as Format;
     const { random, filtermp } = cmd.opts();
     const wallets = spltokenairdrop.formatHoldersToWallet(snapshot, true, random, filtermp);
-    const walletsStr = JSON.stringify(wallets);
-    fs.writeFileSync('walletsPerMint.json', walletsStr);
-    log.log('Wallets written to wallets.json');
+    writeToFile('walletsPerMint', wallets, fileFormat);
+    log.info(`Wallets written to walletsPerMint.${format}`);
     elapsed(start, true, undefined, true);
   });
 
@@ -752,7 +759,7 @@ programCommand('exclude-address', { requireWallet: false })
     const exclusions = await spltokenairdrop.getTransferTransactionInfo(jsonData, env, rpcUrl);
     const exclusionstr = JSON.stringify(exclusions);
     fs.writeFileSync('exclusionlist.json', exclusionstr);
-    log.log('excluded accounts written to exclusionlist.json');
+    log.info('excluded accounts written to exclusionlist.json');
     elapsed(start, true, undefined, true);
   });
 
@@ -788,7 +795,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     const holders = spltokenairdrop.formatNftDropByWalletMultiplier(jsonData, amount as number);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('nfttransfer.json', holdersStr);
-    log.log('Holders written to holders.json');
+    log.info('Holders written to holders.json');
     elapsed(start, true, undefined, true);
   });
 
@@ -806,7 +813,7 @@ programCommand('parse-txns', { requireWallet: false })
     const holders = spltokenairdrop.parseTransactions(jsonData as TransactionAudit[], env, rpcUrl);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('nfttransfer.json', holdersStr);
-    log.log('Holders written to holders.json');
+    log.info('Holders written to holders.json');
     elapsed(start, true, undefined, true);
   });
 
@@ -825,7 +832,7 @@ programCommand('format-mint-drop', { requireWallet: false })
     const holders = spltokenairdrop.formatNftDropByWallet(jsonData, amount as number);
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('mintransfer.json', holdersStr);
-    log.log('Holders written to holders.json');
+    log.info('Holders written to holders.json');
     elapsed(start, true, undefined, true);
   });
 // From commander examples
@@ -889,6 +896,43 @@ function clearLogFiles(isRetry: boolean = false) {
     overwriteFileIfNotExists(LogFiles.TransferErrorJson, true);
     overwriteFileIfNotExists(LogFiles.RetryTransferErrorJson, true);
   }
+}
+
+function writeToFile(
+  fileName: string,
+  data: any,
+  format: Format = Format.JSON,
+  fields?: string[],
+): void {
+  if (format === Format.JSON) {
+    const jsonData = JSON.stringify(data);
+    fs.writeFileSync(`${fileName}.json`, jsonData);
+  } else {
+    let opts: Options = {};
+    if (fields) {
+      opts = {
+        fields: fields,
+      };
+    }
+    let parser = new Parser(opts);
+    let csv: string = "";
+    //handle array of strings
+    if (data && isNonEmptyArrayOfStrings(data)) {
+      const newData = data.map((item) => ({ id: item }));
+      parser = new Parser({});
+      csv = parser.parse(newData);
+      fs.writeFileSync(`${fileName}.csv`, csv);
+    } else {
+      csv = parser.parse(data);
+    }
+    fs.writeFileSync(`${fileName}.csv`, csv);
+  }
+}
+
+function isNonEmptyArrayOfStrings(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'string')
+  );
 }
 
 function getSpinner(text?: string, color?: ora.Color): ora.Ora {

@@ -9,7 +9,11 @@ import axios from 'axios';
 import { Metadata } from './metaplexschema';
 import { MetadataModel } from '../types/metadata';
 import chalk from 'chalk';
-import { filterMarketPlacesByWallet, filterMarketPlacesByHolders, filterMarketPlacesByHoldersMetadata } from '../spltokenairdrop';
+import {
+  filterMarketPlacesByWallet,
+  filterMarketPlacesByHolders,
+  filterMarketPlacesByHoldersMetadata,
+} from '../spltokenairdrop';
 import {
   getAllDomains,
   getDomainKey,

@@ -972,7 +972,9 @@ export function filterMarketPlacesByHolders(transfers: HolderAccount[]): HolderA
   return arr;
 }
 
-export function filterMarketPlacesByHoldersMetadata(transfers: HolderAccountMetadata[]): HolderAccountMetadata[] {
+export function filterMarketPlacesByHoldersMetadata(
+  transfers: HolderAccountMetadata[],
+): HolderAccountMetadata[] {
   let arr = _.filter(transfers, (x) => isNotMarketPlace(x.walletId));
   return arr;
 }

@@ -23,6 +23,7 @@
   "license": "MIT",
   "dependencies": {
     "@bonfida/spl-name-service": "^0.1.55",
+    "@json2csv/plainjs": "^6.1.2",
     "@metaplex-foundation/js": "^0.17.12",
     "@solana/spl-token": "^0.3.6",
     "@solana/web3.js": "^1.73.0",
