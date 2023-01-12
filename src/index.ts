@@ -438,14 +438,15 @@ programCommand('get-mints-ua', { requireWallet: false })
   .argument('<updateauthority>', 'update authority')
   .option('-h, --holders', 'get holders list', false)
   .option('-m, --include-metadata', 'include metadata info about NFT', false)
-  .option('-f, --filter-mktp', 'filter out known mktplaces', false)
+  .option('-fm, --filter-mktp', 'filter out known mktplaces', false)
+  .option('-f, --format <string>', 'file format of the output', 'json')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (updateauthority: string, options, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, holders, includeMetadata, rpcUrl, filterMktp } = cmd.opts();
+    const { env, holders, includeMetadata, rpcUrl, filterMktp, format } = cmd.opts();
     let start = now();
     const spinner = getSpinner();
     spinner.start();
@@ -478,15 +479,13 @@ programCommand('get-mints-ua', { requireWallet: false })
               ? (x as any)['mintAddress'].toBase58()
               : x.mint.address.toBase58(),
           );
-      const jsonMints = JSON.stringify(mintData);
-      fs.writeFileSync(`${updateauthority}-mints.json`, jsonMints);
+      writeToFile(`${updateauthority}-mints`, mintData, format as Format);
       if (holders) {
         const result = includeMetadata
           ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl, filterMktp)
           : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
-        const jsonObjs = JSON.stringify(result);
-        fs.writeFileSync('holdersList.json', jsonObjs);
-        log.log('Holders written to holders.json');
+        writeToFile('holdersList', result, format as Format);
+        log.log(`Holders written to holders.${format}`);
         log.log(result);
       }
     } else {
@@ -506,14 +505,15 @@ programCommand('get-mints-creator', { requireWallet: false })
   )
   .option('-h, --holders', 'get holders list', false)
   .option('-m, --include-metadata <boolean>', 'include metadata info about NFT', false)
-  .option('-f, --filter-mktp', 'filter out known mktplaces', false)
+  .option('-fm, --filter-mktp', 'filter out known mktplaces', false)
+  .option('-f, --format <string>', 'file format of the output', 'json')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (actualCreatorId: string, options, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, creatorPosition, holders, includeMetadata, rpcUrl, filterMktp } = cmd.opts();
+    const { env, creatorPosition, holders, includeMetadata, rpcUrl, filterMktp, format} = cmd.opts();
     let start = now();
     const spinner = getSpinner();
     spinner.start();
@@ -548,15 +548,13 @@ programCommand('get-mints-creator', { requireWallet: false })
                 ? (x as any)['mintAddress'].toBase58()
                 : x.mint.address.toBase58(),
             );
-        const jsonMints = JSON.stringify(mintData);
-        fs.writeFileSync(`${actualCreatorId}-mints.json`, jsonMints);
+        writeToFile(`${actualCreatorId}-mints`, mintData, format as Format);
         if (holders) {
           const result = includeMetadata
             ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl, filterMktp)
             : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
-          const jsonObjs = JSON.stringify(result);
-          fs.writeFileSync('holdersList.json', jsonObjs);
-          log.log('Holders written to holders.json');
+          writeToFile(`${actualCreatorId}-mints`, result, format as Format);
+          log.log(`Holders written to holders.${format}`);
           log.log(result);
         }
         spinner.succeed();
@@ -576,13 +574,14 @@ programCommand('get-mints-wallet', { requireWallet: false })
   .argument('<wallet>', 'wallet')
   .option('-co, --collection <string>', 'certified collection address')
   .option('-m, --include-metadata', 'include metadata info about NFT', false)
+  .option('-f, --format <string>', 'file format of the output', 'json')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .action(async (wallet: string, options, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('get wallet mints', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, includeMetadata, rpcUrl, collection } = cmd.opts();
+    const { env, includeMetadata, rpcUrl, collection, format } = cmd.opts();
     console.log(cmd.opts());
     let start = now();
     const spinner = getSpinner();
@@ -634,8 +633,7 @@ programCommand('get-mints-wallet', { requireWallet: false })
               return (x as any)['mintAddress'].toBase58();
             })
         : mints.map((x) => (x as any)['mintAddress'].toBase58());
-      const jsonMints = JSON.stringify(mintData);
-      fs.writeFileSync(`${wallet}-mints.json`, jsonMints);
+      writeToFile(`${wallet}-mints`, mintData, format as Format);
       spinner.succeed();
     } else {
       log.error('No mints found...');
