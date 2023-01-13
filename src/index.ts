@@ -797,21 +797,25 @@ programCommand('format-mint-drop', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
-programCommand('parse-txns', { requireWallet: false })
+  programCommand('parse-txns', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
+  .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
+  .option('-c, --commitment <string>', 'Commitment of the txn block confirmed or finalized. Default is confirmed', 'confirmed')
+  .option('-p, --price <number>', 'Price in SOL for allocation', myParseInt, 0)
   .action(async (snapshot: string, _, cmd) => {
     console.log(
-      chalk.blue(figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })),
+      chalk.blue(figlet.textSync('Parse Txns', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, rpcUrl } = cmd.opts();
+    const { env, rpcUrl, format, commitment, price } = cmd.opts();
     let start = now();
     const stringData = fs.readFileSync(snapshot, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
-    const holders = spltokenairdrop.parseTransactions(jsonData as TransactionAudit[], env, rpcUrl);
-    const holdersStr = JSON.stringify(holders);
-    fs.writeFileSync('nfttransfer.json', holdersStr);
-    log.info('Holders written to holders.json');
+    const expectedPrice = price === 0 ? undefined : price;
+    const results = await spltokenairdrop.parseTransactions(jsonData as TransactionAudit[], env, rpcUrl, commitment, expectedPrice);
+    writeToFile('parsedtxns', results, format as Format);
+    log.info(`Parse txn results written to parsed-txns.${format}`);
     elapsed(start, true, undefined, true);
   });
 

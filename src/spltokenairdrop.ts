@@ -31,7 +31,7 @@ import { AccountLayout, RawAccount } from '@solana/spl-token';
 import ora from 'ora';
 import cliSpinners from 'cli-spinners';
 import { getConnection } from './helpers/utility';
-import { TransactionAudit } from './types/transactionaudit';
+import { TransactionAudit, TransactionAuditResponse } from './types/transactionaudit';
 import { BN } from 'bn.js';
 import { Metaplex, PublicKey } from '@metaplex-foundation/js';
 
@@ -531,18 +531,22 @@ export async function parseTransactions(
   transactionObjects: TransactionAudit[],
   cluster: string = 'devnet',
   rpcUrl: string | null = null,
-): Promise<void> {
+  commitment: web3Js.Finality = 'confirmed',
+  price?: number,
+): Promise<TransactionAuditResponse[]> {
   let connection = getConnection(cluster, rpcUrl);
   const progressBar = getProgressBar();
-  const results: any[] = [];
+  const results: TransactionAuditResponse[] = [];
   for (var txn of transactionObjects) {
     const response = await connection.getTransaction(txn.TransactionSignature, {
       maxSupportedTransactionVersion: 2,
+      commitment: commitment,
     });
     if (response == null) {
       log.warn(`Transaction ${txn.TransactionSignature} not found`);
       continue;
     }
+    const expectedPaidAmount = price ? Number(txn.TokenAllocation) * price : undefined;
     const parsed = await connection.getParsedTransaction(txn.TransactionSignature);
     console.log(
       'SOL TRANSFERRED:',
@@ -550,6 +554,9 @@ export async function parseTransactions(
       parsed?.transaction.message.instructions.flatMap((x) => x?.parsed.info)[0].lamports /
         web3Js.LAMPORTS_PER_SOL,
     );
+    // @ts-ignore
+    const solTransferred: number = parsed?.transaction.message.instructions.flatMap((x) => x?.parsed.info)[0].lamports /
+    web3Js.LAMPORTS_PER_SOL;
     const message = response.transaction.message;
     const meta = response.meta;
     const recipient = message
@@ -562,19 +569,46 @@ export async function parseTransactions(
     const accountIndex = message
       .getAccountKeys()
       .staticAccountKeys.findIndex((pubkey) => pubkey.equals(recipient!));
-    const preBalance = new BN(meta?.preBalances[accountIndex] || 0).div(
+    const fromAccountIndex = message
+      .getAccountKeys()
+      .staticAccountKeys.findIndex((pubkey) => pubkey.equals(new PublicKey(txn.WalletId!)));
+    const destPreBalance = new BN(meta?.preBalances[accountIndex] || 0).div(
       new BN(web3Js.LAMPORTS_PER_SOL),
     );
-    const postBalance = new BN(meta?.postBalances[accountIndex] || 0).div(
+    const destPostBalance = new BN(meta?.postBalances[accountIndex] || 0).div(
+      new BN(web3Js.LAMPORTS_PER_SOL),
+    );
+    const originPreBalance = new BN(meta?.preBalances[fromAccountIndex] || 0).div(
+      new BN(web3Js.LAMPORTS_PER_SOL),
+    );
+    const originPostBalance = new BN(meta?.postBalances[fromAccountIndex] || 0).div(
       new BN(web3Js.LAMPORTS_PER_SOL),
     );
     console.log(
       `Transaction ${txn.TransactionSignature} from ${txn.WalletId} to ${recipient?.toBase58()} ${
         txn.TokenAllocation
-      } preBalance: ${preBalance} postBalance: ${postBalance}`,
+      } preBalance: ${destPreBalance} postBalance: ${destPostBalance}`,
     );
+    const result: TransactionAuditResponse = {
+      TransactionSignature: txn.TransactionSignature,
+      FromWallet: txn.WalletId,
+      TokenAllocation: txn.TokenAllocation,
+      ToWallet: recipient?.toBase58()!,
+      DestPreBalance: destPreBalance.toNumber(),
+      DestPostBalance: destPostBalance.toNumber(),
+      OriginPreBalance: originPreBalance.toNumber(),
+      OriginPostBalance: originPostBalance.toNumber(),
+      BlockConfirmation: 'confirmed',
+      BlockTime: response.blockTime,
+      Slot: response.slot,
+      Unit: 'SOL',
+      AmountPaid: solTransferred,
+      ExpectedAmount: expectedPaidAmount,
+    }
+    results.push(result);
     progressBar.increment();
   }
+  return results;
 }
 
 export function formatNftDropByWalletMultiplier(
