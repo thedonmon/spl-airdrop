@@ -51,3 +51,4 @@ holder*.json
 *snap*.json
 src/images/*
 mint-*.json
+run*.json

@@ -33,6 +33,8 @@ import ora from 'ora';
 import { Format } from './types/formatenum';
 import { FormatObject } from './types/formatObject';
 import { Options, Parser } from '@json2csv/plainjs';
+import { json } from 'stream/consumers';
+import bs58 from 'bs58';
 
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
@@ -691,6 +693,40 @@ programCommand('format-snapshot', { requireWallet: false })
     const holders = spltokenairdrop.formatHoldersList(snapshot);
     writeToFile('holdersList', holders, fileFormat);
     log.log(`Holders written to holderList.${format}`);
+    elapsed(start, true);
+  });
+
+  programCommand('fromSecretKey', { requireWallet: false })
+  .argument('<key>', 'privatekey')
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
+  .action(async (key: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('from secret', { horizontalLayout: 'controlled smushing' })),
+    );
+    let secretKey = bs58.decode(key)
+    const kp = web3Js.Keypair.fromSecretKey(secretKey)
+    console.log('Public Key:', kp.publicKey.toBase58())
+    fs.writeFileSync(`${kp.publicKey.toBase58()}.json`, `[${kp.secretKey}]`)
+  });
+
+
+  programCommand('format-snapshot-by-nftname', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    let start = now();
+    const { format } = cmd.opts();
+    const shapshotObjects = JSON.parse(fs.readFileSync(snapshot, 'utf8')) as any[];
+    const unique = Array.from(new Set(shapshotObjects.map((item) => item.name)))
+    for (const item of unique) {
+      const filtered = shapshotObjects.filter((x) => x.name === item);
+      const mints = filtered.map(x => x.mint);
+      writeToFile(`${item}`, mints, format as Format);
+    }
     elapsed(start, true);
   });
 
