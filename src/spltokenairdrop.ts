@@ -982,19 +982,20 @@ async function sendAndConfrimInternal(
   const spinner = getSpinner();
   spinner.start();
   const txnSerialized = txn.serialize();
-  const signature = await sendAndConfirmWithRetryBlockStrategy(
-    connection,
-    txnSerialized,
-    sendOptions,
-    commitment,
-    blockhashResponse,
-  );
-  if (signature) {
+  const signature = await connection.sendRawTransaction(txnSerialized)
+  const latestBlockHash = await connection.getLatestBlockhash()
+  const confirmStrategy: web3Js.BlockheightBasedTransactionConfirmationStrategy = {
+    blockhash: latestBlockHash.blockhash,
+    lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
+    signature: signature
+  }
+  const result = await connection.confirmTransaction(confirmStrategy, commitment)
+  if (!result?.value?.err) {
     spinner.succeed();
   } else {
     spinner.stop();
   }
-  return signature;
+  return { txid: signature };
 }
 
 export function filterMarketPlaces(transfers: MintTransfer[]): MintTransfer[] {
