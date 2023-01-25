@@ -288,6 +288,55 @@ programCommand('get-holders', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
+programCommand('close-cm', { requireWallet: true })
+  .argument('<candymachineid>', 'CandyMachineId Id')
+  .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+  .option('-f, --force', 'Force close', false)
+  .action(async (candymachineid: string, options, cmd) => {
+    log.info(
+      chalk.blue(
+        figlet.textSync('Close candymachine', { horizontalLayout: 'controlled smushing' }),
+      ),
+    );
+    clearLogFiles();
+    const { env, rpcUrl, keypair } = cmd.opts();
+    let start = now();
+    const kp = loadWalletKey(keypair);
+    const connection =
+      rpcUrl != null
+        ? new web3Js.Connection(rpcUrl, {
+            httpAgent: false,
+            commitment: 'confirmed',
+          })
+        : new web3Js.Connection(web3Js.clusterApiUrl(env as web3Js.Cluster));
+    const mp = Metaplex.make(connection, {
+      cluster: env as web3Js.Cluster,
+    }).use(keypairIdentity(kp));
+    try {
+      const fetchCM = await mp
+        .candyMachines()
+        .findByAddress({ address: new web3Js.PublicKey(candymachineid) });
+      if (!fetchCM) {
+        log.error(`Candy machine ${candymachineid} not found`);
+        return;
+      }
+      if (fetchCM.itemsAvailable.toNumber() > 0) {
+        log.error(
+          `Candy machine has ${fetchCM.itemsAvailable.toNumber()} available, please pass the force flag to close it`,
+        );
+        return;
+      }
+      const res = await mp.candyMachines().delete({
+        candyMachine: new web3Js.PublicKey(candymachineid),
+      });
+      const result = res.response.signature;
+      log.info(`Candymachine ${candymachineid} closed ${result}`);
+    } catch (e) {
+      log.error(chalk.red(`Error closing candy machine ${candymachineid}`), e);
+    }
+    elapsed(start, true, undefined, true);
+  });
+
 programCommand('get-holders-cm', { requireWallet: false })
   .argument('<verifiedCreatorId>', 'Verified Creator Id')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
@@ -515,7 +564,8 @@ programCommand('get-mints-creator', { requireWallet: false })
       chalk.blue(figlet.textSync('get mints', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, creatorPosition, holders, includeMetadata, rpcUrl, filterMktp, format} = cmd.opts();
+    const { env, creatorPosition, holders, includeMetadata, rpcUrl, filterMktp, format } =
+      cmd.opts();
     let start = now();
     const spinner = getSpinner();
     spinner.start();
@@ -696,21 +746,20 @@ programCommand('format-snapshot', { requireWallet: false })
     elapsed(start, true);
   });
 
-  programCommand('fromSecretKey', { requireWallet: false })
+programCommand('fromSecretKey', { requireWallet: false })
   .argument('<key>', 'privatekey')
   .option('-f, --format <string>', 'file format of the holderlist', 'json')
   .action(async (key: string, _, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('from secret', { horizontalLayout: 'controlled smushing' })),
     );
-    let secretKey = bs58.decode(key)
-    const kp = web3Js.Keypair.fromSecretKey(secretKey)
-    console.log('Public Key:', kp.publicKey.toBase58())
-    fs.writeFileSync(`${kp.publicKey.toBase58()}.json`, `[${kp.secretKey}]`)
+    let secretKey = bs58.decode(key);
+    const kp = web3Js.Keypair.fromSecretKey(secretKey);
+    console.log('Public Key:', kp.publicKey.toBase58());
+    fs.writeFileSync(`${kp.publicKey.toBase58()}.json`, `[${kp.secretKey}]`);
   });
 
-
-  programCommand('format-snapshot-by-nftname', { requireWallet: false })
+programCommand('format-snapshot-by-nftname', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
   .option('-f, --format <string>', 'file format of the holderlist', 'json')
   .action(async (snapshot: string, _, cmd) => {
@@ -721,10 +770,10 @@ programCommand('format-snapshot', { requireWallet: false })
     let start = now();
     const { format } = cmd.opts();
     const shapshotObjects = JSON.parse(fs.readFileSync(snapshot, 'utf8')) as any[];
-    const unique = Array.from(new Set(shapshotObjects.map((item) => item.name)))
+    const unique = Array.from(new Set(shapshotObjects.map((item) => item.name)));
     for (const item of unique) {
       const filtered = shapshotObjects.filter((x) => x.name === item);
-      const mints = filtered.map(x => x.mint);
+      const mints = filtered.map((x) => x.mint);
       writeToFile(`${item}`, mints, format as Format);
     }
     elapsed(start, true);
@@ -833,11 +882,15 @@ programCommand('format-mint-drop', { requireWallet: false })
     elapsed(start, true, undefined, true);
   });
 
-  programCommand('parse-txns', { requireWallet: false })
+programCommand('parse-txns', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
   .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
   .option('-f, --format <string>', 'file format of the holderlist', 'json')
-  .option('-c, --commitment <string>', 'Commitment of the txn block confirmed or finalized. Default is confirmed', 'confirmed')
+  .option(
+    '-c, --commitment <string>',
+    'Commitment of the txn block confirmed or finalized. Default is confirmed',
+    'confirmed',
+  )
   .option('-p, --price <number>', 'Price in SOL for allocation', myParseInt, 0)
   .action(async (snapshot: string, _, cmd) => {
     console.log(
@@ -849,7 +902,13 @@ programCommand('format-mint-drop', { requireWallet: false })
     const stringData = fs.readFileSync(snapshot, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
     const expectedPrice = price === 0 ? undefined : price;
-    const results = await spltokenairdrop.parseTransactions(jsonData as TransactionAudit[], env, rpcUrl, commitment, expectedPrice);
+    const results = await spltokenairdrop.parseTransactions(
+      jsonData as TransactionAudit[],
+      env,
+      rpcUrl,
+      commitment,
+      expectedPrice,
+    );
     writeToFile('parsedtxns', results, format as Format);
     log.info(`Parse txn results written to parsed-txns.${format}`);
     elapsed(start, true, undefined, true);
@@ -859,7 +918,7 @@ programCommand('format-mint-drop', { requireWallet: false })
   .argument('<snapshot>', 'snapshot path')
   .requiredOption('-a, --amount <number>', 'Amount of NFTs per mint')
   .action(async (snapshot: string, _, cmd) => {
-    console.log(
+    log.info(
       chalk.blue(figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
@@ -953,7 +1012,7 @@ function writeToFile(
       };
     }
     let parser = new Parser(opts);
-    let csv: string = "";
+    let csv: string = '';
     //handle array of strings
     if (data && isNonEmptyArrayOfStrings(data)) {
       const newData = data.map((item) => ({ id: item }));
