@@ -299,7 +299,7 @@ programCommand('close-cm', { requireWallet: true })
       ),
     );
     clearLogFiles();
-    const { env, rpcUrl, keypair } = cmd.opts();
+    const { env, rpcUrl, keypair, force } = cmd.opts();
     let start = now();
     const kp = loadWalletKey(keypair);
     const connection =
@@ -320,7 +320,7 @@ programCommand('close-cm', { requireWallet: true })
         log.error(`Candy machine ${candymachineid} not found`);
         return;
       }
-      if (fetchCM.itemsAvailable.toNumber() > 0) {
+      if (fetchCM.itemsAvailable.toNumber() > 0 && !force) {
         log.error(
           `Candy machine has ${fetchCM.itemsAvailable.toNumber()} available, please pass the force flag to close it`,
         );
