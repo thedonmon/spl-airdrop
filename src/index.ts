@@ -121,7 +121,6 @@ programCommand('airdrop-token')
   .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseFloat, 1)
   .requiredOption('-d, --decimals <number>', 'Decimals of the SPL token', myParseInt, 9)
   .requiredOption('-m, --mintid <string>', 'Airdrop token MintID')
-  .requiredOption('-hk, --heliusKey <string>', 'Helius API Key')
   .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
   .option('-h, --getholders', 'Take snapshot', false)
   .option('-co, --collection <string>', 'Verified collection address')
@@ -150,7 +149,6 @@ programCommand('airdrop-token')
       batchSize,
       exclusionlist,
       rpcUrl,
-      heliusKey,
     } = cmd.opts();
     console.log(cmd.opts());
     let holderAccounts: HolderAccount[] = [];

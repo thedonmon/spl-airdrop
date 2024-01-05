@@ -569,9 +569,12 @@ export function getSpinner(text?: string): ora.Ora {
   return spinner;
 }
 
-
 /**
  * Converts a ui representation of a token amount into its native value as `BN`, given the specified mint decimal amount (default to 6 for USDC).
+ * Credit for the below functions to mrgnfi and blockworks team 
+ * https://github.com/mrgnlabs/mrgn-ts/blob/786c1bbaa27d3012deb8d7007156d6460d56c238/packages/mrgn-common/src/conversion.ts#L18
+ * https://github.com/blockworks-foundation/mango-client-v3/blob/fb92f9cf8caaf72966e4f4135c9d6ebd14756df4/src/utils/utils.ts#L67
+ * 
  */
 export function toNumber(amount: number | string | BigNumber | bigint | BN): number {
   let amt: number;
@@ -589,6 +592,9 @@ export function toNumber(amount: number | string | BigNumber | bigint | BN): num
 
 /**
  * Converts a ui representation of a token amount into its native value as `BN`, given the specified mint decimal amount (default to 6 for USDC).
+ * Credit for the below functions to mrgnfi and blockworks team 
+ * https://github.com/mrgnlabs/mrgn-ts/blob/786c1bbaa27d3012deb8d7007156d6460d56c238/packages/mrgn-common/src/conversion.ts#L18
+ * https://github.com/blockworks-foundation/mango-client-v3/blob/fb92f9cf8caaf72966e4f4135c9d6ebd14756df4/src/utils/utils.ts#L67
  */
 export function toBigNumber(
   amount: number | string | BigNumber | BN | bigint,
@@ -604,6 +610,9 @@ export function toBigNumber(
 
 /**
  * Converts a UI representation of a token amount into its native value as `BN`, given the specified mint decimal amount (default to 6 for USDC).
+ * Credit for the below functions to mrgnfi and blockworks team 
+ * https://github.com/mrgnlabs/mrgn-ts/blob/786c1bbaa27d3012deb8d7007156d6460d56c238/packages/mrgn-common/src/conversion.ts#L18
+ * https://github.com/blockworks-foundation/mango-client-v3/blob/fb92f9cf8caaf72966e4f4135c9d6ebd14756df4/src/utils/utils.ts#L67
  */
 export function uiToNative(
   amount: number | string | BigNumber | bigint,
@@ -623,6 +632,9 @@ export function uiToNativeBigNumber(
 
 /**
  * Converts a native representation of a token amount into its UI value as `number`, given the specified mint decimal amount (default to 6 for USDC).
+ * Credit for the below functions to mrgnfi and blockworks team 
+ * https://github.com/mrgnlabs/mrgn-ts/blob/786c1bbaa27d3012deb8d7007156d6460d56c238/packages/mrgn-common/src/conversion.ts#L18
+ * https://github.com/blockworks-foundation/mango-client-v3/blob/fb92f9cf8caaf72966e4f4135c9d6ebd14756df4/src/utils/utils.ts#L67
  */
 export function nativeToUi(
   amount: number | string | BigNumber | BN | bigint,
