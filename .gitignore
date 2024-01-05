@@ -52,3 +52,5 @@ holder*.json
 src/images/*
 mint-*.json
 run*.json
+
+.history/

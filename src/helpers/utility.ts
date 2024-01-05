@@ -2,12 +2,16 @@ import { HolderAccount, HolderAccountMetadata } from '../types/holderaccounts';
 import * as web3Js from '@solana/web3.js';
 import * as fs from 'fs';
 import log from 'loglevel';
+import * as cliProgress from 'cli-progress';
+import ora from 'ora';
+import cliSpinners from 'cli-spinners';
 import { sendAndConfirmWithRetry } from './transaction-helper';
 import { TOKEN_PROGRAM_ID } from '@solana/spl-token';
 import { Nft } from '@metaplex-foundation/js';
 import axios from 'axios';
 import { Metadata } from './metaplexschema';
 import { MetadataModel } from '../types/metadata';
+import { getAssetsByCollection, parseTransactionForAddressByType } from "../types/helius/fetch";
 import chalk from 'chalk';
 import {
   filterMarketPlacesByWallet,
@@ -20,6 +24,8 @@ import {
   NameRegistryState,
   performReverseLookup,
 } from '@bonfida/spl-name-service';
+import BN from 'bn.js';
+import BigNumber from 'bignumber.js';
 
 export async function promiseAllInOrder<T>(it: (() => Promise<T>)[]): Promise<Iterable<T>> {
   let ret: T[] = [];
@@ -77,6 +83,154 @@ export const chunkItems = <T>(items: T[], chunkSize?: number) =>
     chunks[chunk] = ([] as T[]).concat(chunks[chunk] || [], item);
     return chunks;
   }, []);
+
+
+  export async function getSnapshotByCollectionV2(collectionId: string, heliusUrl: string) {
+    const assets = await getAssetsByCollection(heliusUrl, collectionId);
+    const accountsMap = new Map<string, HolderAccount>();
+    const progressBar = getProgressBar();
+    log.info(`Total assets in collection: ${assets.results.length}`);
+    progressBar.start(assets.results.length, 0);
+    log.info(`Fetching accounts...`);
+    for (const asset of assets.results) {
+      const walletId = asset.ownership.owner;
+      const existingHolder = accountsMap.get(walletId);
+
+      if (existingHolder) {
+        existingHolder.mintIds.push(asset.id);
+        existingHolder.totalAmount += 1;
+      } else {
+        accountsMap.set(walletId, {
+          walletId: walletId,
+          totalAmount: 1,
+          mintIds: [asset.id],
+        });
+      }
+      progressBar.increment();
+    }
+    const accounts = Array.from(accountsMap.values());
+    progressBar.stop();
+    return accounts;
+  }  
+
+  export async function getSnapshotByCollectionWithMetadataV2(collectionId: string, heliusUrl: string) {
+    const assets = await getAssetsByCollection(heliusUrl, collectionId);
+    const accountsMap = new Map<string, HolderAccountMetadata>();
+    
+    for (const asset of assets.results) {
+      const walletId = asset.ownership.owner;
+      const existingHolder = accountsMap.get(walletId);
+
+      if (existingHolder) {
+        existingHolder.mints.push({
+          mint: asset.id,
+          name: asset.content.metadata.name,
+          image: asset.content.files[0].uri,
+          attributes: asset.content.metadata.attributes
+        });
+        existingHolder.totalAmount += 1;
+      } else {
+        accountsMap.set(walletId, {
+          walletId: walletId,
+          totalAmount: 1,
+          mints: [{
+            mint: asset.id,
+            name: asset.content.metadata.name,
+            image: asset.content.files[0].uri,
+            attributes: asset.content.metadata.attributes
+          }],
+        });
+      }
+    }
+    const accounts = Array.from(accountsMap.values());
+  
+    log.info("Unqiue Accounts: ", accounts.length);
+    return accounts;
+  }  
+
+  export async function getMintIdsByCollectionV2(collectionId: string, heliusUrl: string) {
+    const assets = await getAssetsByCollection(heliusUrl, collectionId);
+    return assets.results.map((asset) => asset.id);
+  }
+
+  export async function getFirstMintersByCollection(collectionId: string, heliusUrl: string, heliusApiKey: string, env: string = "devnet") {
+    const mintIds = await getMintIdsByCollectionV2(collectionId, heliusUrl);
+    const progressBar = getProgressBar();
+    progressBar.start(mintIds.length, 0);
+    const mintIdChunks = chunkItems(mintIds, 250);
+    const mintersMap = new Map();
+    log.log("Fetched mint IDs...", mintIds.length)
+    for (const chunk of mintIdChunks) {
+        for (const mintId of chunk) {
+            const mintersTx = await parseTransactionForAddressByType(mintId, heliusApiKey, "NFT_MINT", env);
+            if (mintersTx.length > 1) {
+                console.warn(`Multiple minters found for ${mintId}: `, mintersTx.length);
+            }
+            const walletId = mintersTx[0].feePayer;
+            const existingHolder = mintersMap.get(walletId);
+
+            if (existingHolder) {
+                existingHolder.mintIds.push(mintId);
+                existingHolder.totalAmount += 1;
+            } else {
+                mintersMap.set(walletId, {
+                    walletId: walletId,
+                    totalAmount: 1,
+                    mintIds: [mintId],
+                });
+            }
+            progressBar.increment();
+        }
+    }
+    progressBar.stop();
+    const minters = Array.from(mintersMap.values());
+    console.log("Minters: ", minters);
+    return minters;
+}
+
+export async function getFirstMintersByCollectionPA(collectionId: string, heliusUrl: string, heliusApiKey: string, env: string = "devnet") {
+  const mintIds = await getMintIdsByCollectionV2(collectionId, heliusUrl);
+  const mintIdChunks = chunkItems(mintIds);
+  const mintersMap = new Map();
+  const progressBar = getProgressBar();
+  progressBar.start(mintIds.length, 0);
+  log.info("Fetched mint IDs...", mintIds.length)
+  for (const chunk of mintIdChunks) {
+      const mintersPromises = chunk.map(async (mintId) => {
+          const mintersTx = await parseTransactionForAddressByType(mintId, heliusApiKey, "NFT_MINT", env);
+          if (mintersTx.length > 1) {
+              log.warn(`Multiple minters found for ${mintId}: `, mintersTx.length);
+          }
+          progressBar.increment();
+          return {
+              mintId,
+              walletId: mintersTx[0].feePayer
+          };
+      });
+
+      const mintersChunk = await Promise.all(mintersPromises);
+
+      for (const minter of mintersChunk) {
+          const { mintId, walletId } = minter;
+          const existingHolder = mintersMap.get(walletId);
+
+          if (existingHolder) {
+              existingHolder.mintIds.push(mintId);
+              existingHolder.totalAmount += 1;
+          } else {
+              mintersMap.set(walletId, {
+                  walletId: walletId,
+                  totalAmount: 1,
+                  mintIds: [mintId],
+              });
+          }
+      }
+  }
+  progressBar.stop();
+  const minters = Array.from(mintersMap.values());
+  console.log("Minters: ", minters);
+  return minters;
+}
 
 export async function getSnapshot(
   mintIds: string[],
@@ -393,4 +547,92 @@ export function isValidHttpUrl(testUrl: string): boolean {
     return false;
   }
   return url.protocol === 'http:' || url.protocol === 'https:';
+}
+
+export function getProgressBar(): cliProgress.SingleBar {
+  return new cliProgress.SingleBar(
+    {
+      format: 'Progress: [{bar}] {percentage}% | {value}/{total} ',
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+    },
+    cliProgress.Presets.shades_classic,
+  );
+}
+
+export function getSpinner(text?: string): ora.Ora {
+  const spinner = ora({
+    text: text ?? 'Transferring, please wait...',
+    spinner: cliSpinners.material,
+  });
+  spinner.color = 'yellow';
+  return spinner;
+}
+
+
+/**
+ * Converts a ui representation of a token amount into its native value as `BN`, given the specified mint decimal amount (default to 6 for USDC).
+ */
+export function toNumber(amount: number | string | BigNumber | bigint | BN): number {
+  let amt: number;
+  if (typeof amount === 'number') {
+    amt = amount;
+  } else if (typeof amount === 'string') {
+    amt = Number(amount);
+  } else if (typeof amount === 'bigint') {
+    amt = Number(amount.toString());
+  } else {
+    amt = amount.toNumber();
+  }
+  return amt;
+}
+
+/**
+ * Converts a ui representation of a token amount into its native value as `BN`, given the specified mint decimal amount (default to 6 for USDC).
+ */
+export function toBigNumber(
+  amount: number | string | BigNumber | BN | bigint,
+): BigNumber {
+  let amt: BigNumber;
+  if (amount instanceof BigNumber) {
+    amt = amount;
+  } else {
+    amt = new BigNumber(amount.toString());
+  }
+  return amt;
+}
+
+/**
+ * Converts a UI representation of a token amount into its native value as `BN`, given the specified mint decimal amount (default to 6 for USDC).
+ */
+export function uiToNative(
+  amount: number | string | BigNumber | bigint,
+  decimals: number,
+): BN {
+  const amt = toBigNumber(amount);
+  return new BN(amt.times(10 ** decimals).toFixed(0, BigNumber.ROUND_FLOOR));
+}
+
+export function uiToNativeBigNumber(
+  amount: number | string | BigNumber | bigint,
+  decimals: number,
+): BigNumber {
+  const amt = toBigNumber(amount);
+  return amt.times(10 ** decimals);
+}
+
+/**
+ * Converts a native representation of a token amount into its UI value as `number`, given the specified mint decimal amount (default to 6 for USDC).
+ */
+export function nativeToUi(
+  amount: number | string | BigNumber | BN | bigint,
+  decimals: number,
+): number {
+  const amt = toBigNumber(amount);
+  return amt.div(10 ** decimals).toNumber();
+}
+
+export function roundToDecimalPlace(num: number, places: number) {
+  const multiplier = Math.pow(10, places);
+  return Math.round(num * multiplier) / multiplier;
 }

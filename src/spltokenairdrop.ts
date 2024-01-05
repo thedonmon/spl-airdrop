@@ -70,7 +70,7 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
     'confirmed',
     splToken.TOKEN_PROGRAM_ID,
   );
-  const amountToTransfer = utility.getLamports(mintObj.decimals) * transferAmount!;
+  const amountToTransfer = utility.uiToNative(transferAmount, mintObj.decimals);
   const progressBar = getProgressBar();
   progressBar.start(addresses.length, 0);
   const ownerAta = await splToken.getAssociatedTokenAddress(
@@ -82,7 +82,7 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
   );
   const walletChunks = utility.chunkItems(addresses, batchSize);
   overrideBalanceCheck
-    ? log.warn(`Overriding balance check. Sending amount ${amountToTransfer}`)
+    ? log.warn(`Overriding balance check. Sending amount ${amountToTransfer.toString()}`)
     : null;
   for (let walletChunk of walletChunks) {
     await Promise.all(
@@ -105,9 +105,10 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
           if (accountInfo) {
             parsedAccountInfo = AccountLayout.decode(accountInfo.data);
           }
+          const amountToTransferAsBigint = BigInt(amountToTransfer.toString());
           const parsedAmount = parsedAccountInfo?.amount;
           if (
-            (parsedAmount && parsedAmount < amountToTransfer && !overrideBalanceCheck) ||
+            (parsedAmount && parsedAmount < BigInt(amountToTransfer.toString()) && !overrideBalanceCheck) ||
             !parsedAmount ||
             overrideBalanceCheck
           ) {
@@ -117,7 +118,7 @@ export async function airdropToken(request: AirdropCliRequest): Promise<any> {
               tokenMint: mintPk,
               connection,
               keypair,
-              totalTransferAmt: amountToTransfer,
+              totalTransferAmt: amountToTransferAsBigint,
               ownerAta,
               fromWallet,
               toWallet: toWalletPk,
@@ -173,7 +174,7 @@ export async function airdropTokenPerNft(request: AirdropTypeRequest<HolderAccou
     return holders.map((x) => {
       return {
         wallet: x.walletId,
-        transferAmt: transferAmount! * x.totalAmount * decimalsToUse,
+        transferAmt: utility.uiToNative(transferAmount * x.totalAmount, decimals!).toNumber(),
       };
     });
   }
@@ -193,7 +194,7 @@ export async function airdropTokenPerNft(request: AirdropTypeRequest<HolderAccou
     await Promise.all(
       walletChunk.map(async (toWallet, index) => {
         let start = utility.now();
-        const totalTransferAmt = transferAmount! * toWallet.totalAmount * decimalsToUse;
+        const totalTransferAmt = utility.uiToNative(transferAmount * toWallet.totalAmount, decimals!).toNumber();
         try {
           await tryTransfer({
             toWallet,
@@ -381,6 +382,7 @@ export async function retryErrors(
               ownerAta,
               fromWallet,
               closeAccounts: retryError.isNFT,
+              totalTransferAmt: retryError.transferAmount,
             });
           } else {
             log.warn(chalk.yellow(`${retryError.wallet} already has token ${retryError.mint}`));
@@ -794,7 +796,7 @@ async function tryMintTo(
       mintObj.address,
       walletAta,
       keypair.publicKey,
-      totalTransferAmt!,
+      totalTransferAmt,
       undefined,
       splToken.TOKEN_PROGRAM_ID,
     );
@@ -893,7 +895,7 @@ async function tryTransferMint(request: ITransferRequest<MintTransfer>): Promise
     {
       toWallet: new web3Js.PublicKey(toWallet.wallet),
       tokenMint: new web3Js.PublicKey(toWallet.mintId),
-      totalTransferAmt: totalTransferAmt!,
+      totalTransferAmt: totalTransferAmt,
       connection,
       keypair,
       ownerAta,
@@ -933,7 +935,7 @@ async function prepTransfer(
     ownerAta,
     walletAta,
     fromWallet,
-    totalTransferAmt!,
+    totalTransferAmt,
     [keypair],
     splToken.TOKEN_PROGRAM_ID,
   );

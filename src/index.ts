@@ -3,6 +3,7 @@ import chalk from 'chalk';
 import * as figlet from 'figlet';
 import log, { LogLevelDesc } from 'loglevel';
 import * as fs from 'fs';
+import path from 'path';
 import { InvalidArgumentError, program } from 'commander';
 import * as spltokenairdrop from './spltokenairdrop';
 import {
@@ -111,8 +112,73 @@ programCommand('airdrop-token')
         mintIfAuthority: mintAuthority,
         overrideBalanceCheck,
       });
-      log.log(result);
+      log.info(result);
     }
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('airdrop-token-per-nft-v2')
+  .requiredOption('-am, --amount <number>', 'tokens to airdrop', myParseFloat, 1)
+  .requiredOption('-d, --decimals <number>', 'Decimals of the SPL token', myParseInt, 9)
+  .requiredOption('-m, --mintid <string>', 'Airdrop token MintID')
+  .requiredOption('-hk, --heliusKey <string>', 'Helius API Key')
+  .option('-al, --airdroplist <path>', 'path to list of wallets only to airdrop')
+  .option('-h, --getholders', 'Take snapshot', false)
+  .option('-co, --collection <string>', 'Verified collection address')
+  .option('-s, --simulate', 'Simuate airdrop', false)
+  .option('-ex, --exclusionlist <path>', 'path to addresses to excluse')
+  .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+  .option('-b, --batch-size <number>', 'Amount to batch transactions', myParseInt, 25)
+  .action(async (_, cmd) => {
+    console.log(
+      chalk.blue(
+        figlet.textSync('token per nft airdrop v2', { horizontalLayout: 'controlled smushing' }),
+      ),
+    );
+    let start = now();
+    clearLogFiles();
+    const {
+      keypair,
+      env,
+      amount,
+      decimals,
+      mintid,
+      airdroplist,
+      getHolders,
+      collection,
+      simulate,
+      batchSize,
+      exclusionlist,
+      rpcUrl,
+      heliusKey,
+    } = cmd.opts();
+    console.log(cmd.opts());
+    let holderAccounts: HolderAccount[] = [];
+    const kp = loadWalletKey(keypair);
+    const mintPk = new PublicKey(mintid);
+    if (getHolders) {
+      holderAccounts = await utility.getSnapshotByCollectionV2(collection, rpcUrl);
+    } else {
+      const holders = fs.readFileSync(airdroplist, 'utf8');
+      holderAccounts = JSON.parse(holders) as HolderAccount[];
+    }
+    let exclusionList: string[] = [];
+    if (exclusionlist) {
+      exclusionList = JSON.parse(fs.readFileSync(exclusionlist, 'utf-8'));
+    }
+    const result = await spltokenairdrop.airdropTokenPerNft({
+      keypair: kp,
+      holdersList: holderAccounts,
+      tokenMint: mintPk,
+      decimals,
+      transferAmount: amount,
+      cluster: env,
+      rpcUrl,
+      simulate,
+      batchSize,
+      exclusionList,
+    });
+    log.info(result);
     elapsed(start, true, undefined, true);
   });
 
@@ -204,6 +270,7 @@ programCommand('airdrop-nft')
         rpcUrl,
         simulate: false,
         batchSize: batchSize as number,
+        transferAmount: 1, //satisfy interface
       });
     } else {
       const result = await spltokenairdrop.airdropNft({
@@ -214,8 +281,9 @@ programCommand('airdrop-nft')
         rpcUrl,
         simulate: true,
         batchSize: batchSize as number,
+        transferAmount: 1, //satisfy interface
       });
-      log.log(result);
+      log.info(result);
     }
     elapsed(start, true, undefined, true);
   });
@@ -258,7 +326,7 @@ programCommand('retry-errors')
         true,
         batchSize as number,
       );
-      log.log(result);
+      log.info(result);
     }
     elapsed(start, true, undefined, true);
   });
@@ -280,13 +348,55 @@ programCommand('get-holders', { requireWallet: false })
       const result = await getSnapshot(mintIds, rpcUrl);
       var jsonObjs = JSON.stringify(result);
       fs.writeFileSync('holders.json', jsonObjs);
-      log.log('Holders written to holders.json');
-      log.log(result);
+      log.info('Holders written to holders.json');
+      log.info(result);
     } else {
-      log.log('Please check file is in correct format');
+      log.warn('Please check file is in correct format');
     }
     elapsed(start, true, undefined, true);
   });
+
+programCommand('get-holders-v2', { requireWallet: false })
+.argument('<collectionId>', 'CollectionId')
+.requiredOption('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+.action(async (collectionId: string, options, cmd) => {
+  console.log(
+    chalk.blue(figlet.textSync('get holders v2', { horizontalLayout: 'controlled smushing' })),
+  );
+  clearLogFiles();
+  const { env, rpcUrl } = cmd.opts();
+  let start = now();
+  if (collectionId) {
+    const result = await utility.getSnapshotByCollectionV2(collectionId, rpcUrl);
+    writeToFile('holders.json', result, { includeTimestamp: true });
+    log.info('Holders written to holders.json');
+    log.info(result);
+  } else {
+    log.warn('Please check collectionId is correct');
+  }
+  elapsed(start, true, undefined, true);
+});
+
+programCommand('get-first-minters', { requireWallet: false })
+.argument('<collectionId>', 'CollectionId')
+.requiredOption('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+.requiredOption('-hk, --heliusapikey <string>', 'heliusApiKey')
+.action(async (collectionId: string, options, cmd) => {
+  console.log(
+    chalk.blue(figlet.textSync('get first minters', { horizontalLayout: 'controlled smushing' })),
+  );
+  clearLogFiles();
+  const { env, rpcUrl, heliusapikey } = cmd.opts();
+  let start = now();
+  if (collectionId) {
+    const result = await utility.getFirstMintersByCollectionPA(collectionId, rpcUrl, heliusapikey, env);
+    writeToFile(`first_minters_${collectionId}.json`, result, { includeTimestamp: true });
+    log.info(`First minters written to first_minters_${collectionId}`);
+  } else {
+    log.warn('Please check collectionId is correct');
+  }
+  elapsed(start, true, undefined, true);
+});
 
 programCommand('close-cm', { requireWallet: true })
   .argument('<candymachineid>', 'CandyMachineId Id')
@@ -355,8 +465,8 @@ programCommand('get-holders-cm', { requireWallet: false })
     const result = await getSnapshot(mintIds, rpcUrl);
     const jsonObjs = JSON.stringify(result);
     fs.writeFileSync('holdersList.json', jsonObjs);
-    log.log('Holders written to holders.json');
-    log.log(result);
+    log.info('Holders written to holders.json');
+    log.info(result);
     elapsed(start, true, undefined, true);
   });
 
@@ -475,8 +585,8 @@ programCommand('get-mints-cmid', { requireWallet: false })
           : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
         const jsonObjs = JSON.stringify(result);
         fs.writeFileSync('holdersList.json', jsonObjs);
-        log.log('Holders written to holders.json');
-        log.log(result);
+        log.info('Holders written to holders.json');
+        log.info(result);
       }
     } else {
       log.error('No mints found...');
@@ -530,14 +640,14 @@ programCommand('get-mints-ua', { requireWallet: false })
               ? (x as any)['mintAddress'].toBase58()
               : x.mint.address.toBase58(),
           );
-      writeToFile(`${updateauthority}-mints`, mintData, format as Format);
+      writeToFile(`${updateauthority}-mints`, mintData, { format: format as Format });
       if (holders) {
         const result = includeMetadata
           ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl, filterMktp)
           : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
-        writeToFile('holdersList', result, format as Format);
-        log.log(`Holders written to holders.${format}`);
-        log.log(result);
+        writeToFile('holdersList', result, { format: format as Format });
+        log.info(`Holders written to holders.${format}`);
+        log.info(result);
       }
     } else {
       log.error('No mints found...');
@@ -600,14 +710,14 @@ programCommand('get-mints-creator', { requireWallet: false })
                 ? (x as any)['mintAddress'].toBase58()
                 : x.mint.address.toBase58(),
             );
-        writeToFile(`${actualCreatorId}-mints`, mintData, format as Format);
+        writeToFile(`${actualCreatorId}-mints`, mintData, { format: format as Format });
         if (holders) {
           const result = includeMetadata
             ? await getSnapshotWithMetadata(mints as Nft[], rpcUrl, filterMktp)
             : await getSnapshot(mintData as string[], rpcUrl, filterMktp);
-          writeToFile(`${actualCreatorId}-mints`, result, format as Format);
-          log.log(`Holders written to holders.${format}`);
-          log.log(result);
+          writeToFile(`${actualCreatorId}-mints`, result, { format: format as Format});
+          log.info(`Holders written to holders.${format}`);
+          log.info(result);
         }
         spinner.succeed();
       } else {
@@ -685,7 +795,7 @@ programCommand('get-mints-wallet', { requireWallet: false })
               return (x as any)['mintAddress'].toBase58();
             })
         : mints.map((x) => (x as any)['mintAddress'].toBase58());
-      writeToFile(`${wallet}-mints`, mintData, format as Format);
+      writeToFile(`${wallet}-mints`, mintData, { format: format as Format });
       spinner.succeed();
     } else {
       log.error('No mints found...');
@@ -741,8 +851,8 @@ programCommand('format-snapshot', { requireWallet: false })
     const { format } = cmd.opts();
     const fileFormat = format as Format;
     const holders = spltokenairdrop.formatHoldersList(snapshot);
-    writeToFile('holdersList', holders, fileFormat);
-    log.log(`Holders written to holderList.${format}`);
+    writeToFile('holdersList', holders, { format: fileFormat });
+    log.info(`Holders written to holderList.${format}`);
     elapsed(start, true);
   });
 
@@ -774,7 +884,7 @@ programCommand('format-snapshot-by-nftname', { requireWallet: false })
     for (const item of unique) {
       const filtered = shapshotObjects.filter((x) => x.name === item);
       const mints = filtered.map((x) => x.mint);
-      writeToFile(`${item}`, mints, format as Format);
+      writeToFile(`${item}`, mints, { format: format as Format });
     }
     elapsed(start, true);
   });
@@ -790,7 +900,7 @@ programCommand('format-holderlist-to-wallets', { requireWallet: false })
     const fileFormat = format as Format;
     let start = now();
     const wallets = spltokenairdrop.formatFromHolderListToWalletList(holderlist);
-    writeToFile('wallets', wallets, fileFormat);
+    writeToFile('wallets', wallets, { format: fileFormat });
     log.info(`Wallets written to wallets.${fileFormat}`);
     elapsed(start, true, undefined, true);
   });
@@ -810,7 +920,7 @@ programCommand('format-snapshot-to-wallets-permint', { requireWallet: false })
     const fileFormat = format as Format;
     const { random, filtermp } = cmd.opts();
     const wallets = spltokenairdrop.formatHoldersToWallet(snapshot, true, random, filtermp);
-    writeToFile('walletsPerMint', wallets, fileFormat);
+    writeToFile('walletsPerMint', wallets, { format: fileFormat });
     log.info(`Wallets written to walletsPerMint.${format}`);
     elapsed(start, true, undefined, true);
   });
@@ -909,7 +1019,7 @@ programCommand('parse-txns', { requireWallet: false })
       commitment,
       expectedPrice,
     );
-    writeToFile('parsedtxns', results, format as Format);
+    writeToFile('parsedtxns', results, { format: format as Format } );
     log.info(`Parse txn results written to parsed-txns.${format}`);
     elapsed(start, true, undefined, true);
   });
@@ -941,6 +1051,20 @@ function myParseInt(value: any) {
   }
   return parsedValue;
 }
+
+function myParseFloat(value: any, decimalPlaces = 9) {
+  console.log('myparsefloat', value)
+  const parsedValue = parseFloat(value);
+  console.log('myparsefloat parsed', parsedValue)
+  if (isNaN(parsedValue)) {
+    throw new InvalidArgumentError('Not a number.');
+  }
+  // Limit to up to 9 decimal places and convert back to a number
+  const parsed = parseFloat(parsedValue.toFixed(decimalPlaces));
+  console.log('myparsefloat parsed final', parsed)
+  return parsed;
+}
+
 
 if (!fs.existsSync(LOG_PATH)) {
   fs.mkdirSync(LOG_PATH);
@@ -995,36 +1119,63 @@ function clearLogFiles(isRetry: boolean = false) {
   }
 }
 
+function ensureResultsDirectory() {
+  const projectRoot = path.join(__dirname, '..');
+  const resultsDir = path.join(projectRoot, 'results');
+  if (!fs.existsSync(resultsDir)) {
+    fs.mkdirSync(resultsDir);
+  }
+  return resultsDir;
+}
+
 function writeToFile(
   fileName: string,
   data: any,
-  format: Format = Format.JSON,
-  fields?: string[],
+  options: {
+    format?: Format,
+    fields?: string[],
+    includeTimestamp?: boolean,
+  } = {}
 ): void {
+  const {
+    format = Format.JSON,
+    fields = [],
+    includeTimestamp = false,
+  } = options;
+
+  // Ensure the results directory exists
+  const resultsDir = ensureResultsDirectory();
+
+  // Remove file extension if included in fileName
+  const baseName = path.basename(fileName, path.extname(fileName));
+
+  // Add timestamp if needed
+  const timestamp = includeTimestamp ? `_${new Date().toISOString().replace(/[:.]/g, '-')}` : '';
+
+  // Determine the file extension based on the format
+  const fileExtension = format === Format.JSON ? '.json' : '.csv';
+
+  // Construct the full file path
+  const filePath = path.join(resultsDir, `${baseName}${timestamp}${fileExtension}`);
+
   if (format === Format.JSON) {
     const jsonData = JSON.stringify(data);
-    fs.writeFileSync(`${fileName}.json`, jsonData);
+    fs.writeFileSync(filePath, jsonData);
   } else {
-    let opts: Options = {};
-    if (fields) {
-      opts = {
-        fields: fields,
-      };
-    }
+    let opts: Options = { fields };
     let parser = new Parser(opts);
     let csv: string = '';
-    //handle array of strings
     if (data && isNonEmptyArrayOfStrings(data)) {
       const newData = data.map((item) => ({ id: item }));
       parser = new Parser({});
       csv = parser.parse(newData);
-      fs.writeFileSync(`${fileName}.csv`, csv);
     } else {
       csv = parser.parse(data);
     }
-    fs.writeFileSync(`${fileName}.csv`, csv);
+    fs.writeFileSync(filePath, csv);
   }
 }
+
 
 function isNonEmptyArrayOfStrings(value: unknown): value is string[] {
   return (
