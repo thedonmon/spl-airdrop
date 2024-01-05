@@ -16,6 +16,7 @@ If you enjoy using this tool send the creator a tip!
 - Get hash list
 - Format files to spec based on actions taken (transfer nfts, airdrop tokens, etc.)
 - Retry errors for both types of transfers in one command.
+- **Update 01-04-2024**: Helius functionality for snapshots and transaction parsing - more tooling in progress
 
 ## Installation
 
