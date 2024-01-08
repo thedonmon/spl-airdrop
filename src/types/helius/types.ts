@@ -128,7 +128,16 @@ export type HeliusDigitalAsset = {
 	supply: number | null;
 	mutable: boolean;
 	burnt: boolean;
+  tokenInfo?: TokenInfo;
 };
+
+export type TokenInfo = {
+  balance: number | bigint;
+  supply: number | bigint;
+  decimals: number;
+  token_program: string;
+  associated_token_address: string;
+} 
 
 export type Authority = {
 	address: string;
@@ -214,5 +223,13 @@ export type DelegateAddressType = {
 	address: string;
 	signed: boolean;
 }
+
+export type GetAssetsPaginatedOptions = {
+  heliusUrl: string;
+  method: string; // e.g., getAssetsByGroup, getAssetsByAuthority, etc.
+  params: Record<string, any>; // For any extra parameters
+  requestId?: string;
+};
+
 
 export type FetchAssetsFunction = (url: string, address: string) => Promise<{ totalResults: number; results: HeliusDigitalAsset[]; }>;

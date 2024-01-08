@@ -1,4 +1,4 @@
-import { HeliusDigitalAsset, HeliusDigitalAssetResult, HeliusDigitalAssetsResult, TransactionsArray } from "./types";
+import { GetAssetsPaginatedOptions, HeliusDigitalAsset, HeliusDigitalAssetResult, HeliusDigitalAssetsResult, TransactionsArray } from "./types";
 import { backOff } from 'exponential-backoff';
 
 async function makePostRequest(url: string, body: any) {
@@ -29,7 +29,7 @@ async function makeGetRequestWithBackoff(url: string) {
   }
   
 
-async function makePaginatedPostRequest(url: string, body: any, numOfAttempts: number = 5, startingDelay: number = 500) {
+async function makePostRequestWithBackoff(url: string, body: any, numOfAttempts: number = 5, startingDelay: number = 500) {
     return backOff(async () => {
       const response = await fetch(url, {
             method: "POST",
@@ -107,126 +107,107 @@ export const getAsset = async (heliusUrl: string, assetId: string, id?: string) 
 }
 
 export const getAssetsByCollection = async (heliusUrl: string, collection: string, id?: string) => {
-    console.time("getAssetsByGroup");
-    let page = 1;
-    let paginate = true;
-    let assetList: HeliusDigitalAsset[] = [];
-
-    while (paginate) {
-        try {
-            const responseJson = await makePaginatedPostRequest(heliusUrl, {
-                jsonrpc: "2.0",
-                id: id ? id : `collection-id-${page}`,
-                method: "getAssetsByGroup",
-                params: {
-                    groupKey: "collection",
-                    groupValue: collection,
-                    page: page,
-                    limit: 1000,
-                },
-            });
-
-            const { result } = responseJson as HeliusDigitalAssetsResult;
-            assetList.push(...result.items);
-
-            if (result.total !== 1000) {
-                paginate = false;
-            } else {
-                page++;
-            }
-        } catch (e) {
-            console.error(`Error on page ${page}:`, e);
-            break; // Break the loop in case of persistent error
-        }
-    }
-
-    console.timeEnd("getAssetsByGroup");
-    const resultData = {
-        totalResults: assetList.length,
-        results: assetList,
+    const requestParams: GetAssetsPaginatedOptions = {
+        heliusUrl: heliusUrl,
+        method: "getAssetsByGroup",
+        requestId: id,
+        params: {
+            groupKey: "collection",
+            groupValue: collection,
+        },
     };
+    const resultData = await getAssetsPaginated(requestParams);
+    
     return resultData;
 };
 
 export const getAssetsByAuthority = async (heliusUrl: string, authority: string, id?: string) => {
-    console.time("getAssetsByAuthority");
-    let page = 1;
-    let paginate = true;
-    let assetList: HeliusDigitalAsset[] = [];
-
-    while (paginate) {
-        try {
-            const responseJson = await makePaginatedPostRequest(heliusUrl, {
-                jsonrpc: "2.0",
-                id: id ? id : `authority-id-${page}`,
-                method: "getAssetsByAuthority",
-                params: {
-                    authorityAddress: authority,
-                    page: page,
-                    limit: 1000,
-                },
-            });
-
-            const { result } = responseJson as HeliusDigitalAssetsResult;
-            assetList.push(...result.items);
-
-            if (result.total !== 1000) {
-                paginate = false;
-            } else {
-                page++;
-            }
-        } catch (e) {
-            console.error(`Error on page ${page}:`, e);
-            break; // Break the loop in case of persistent error
-        }
-    }
-
-    console.timeEnd("getAssetsByAuthority");
-    const resultData = {
-        totalResults: assetList.length,
-        results: assetList,
+    const requestParams: GetAssetsPaginatedOptions = {
+        heliusUrl: heliusUrl,
+        method: "getAssetsByAuthority",
+        requestId: id,
+        params: {
+            authorityAddress: authority,
+        },
     };
+    const resultData = await getAssetsPaginated(requestParams);
+    
     return resultData;
 };
 
 export const getAssetsByCreator = async (heliusUrl: string, creator: string, onlyVerified: boolean = true, id?: string) => {
-    console.time("getAssetsByCreator");
+    const requestParams: GetAssetsPaginatedOptions = {
+        heliusUrl: heliusUrl,
+        method: "getAssetsByCreator",
+        requestId: id,
+        params: {
+            creatorAddress: creator,
+            onlyVerified: onlyVerified,
+        },
+    };
+    const resultData = await getAssetsPaginated(requestParams);
+    
+    return resultData;
+};
+
+export const getAssetsByOwner = async (heliusUrl: string, owner: string, showFungible: boolean = true, showNativeBalance: boolean = true, id?: string) => {
+    const requestParams: GetAssetsPaginatedOptions = {
+        heliusUrl: heliusUrl,
+        method: "getAssetsByOwner",
+        requestId: id,
+        params: {
+            ownerAddress: owner,
+            displayOptions: {
+                showFungible: showFungible,
+                showNativeBalance: showNativeBalance,
+            }
+        },
+    };
+    const resultData = await getAssetsPaginated(requestParams);
+    
+    return resultData;
+};
+
+
+export async function getAssetsPaginated(options: GetAssetsPaginatedOptions) {
+    console.time(`${options.method}`);
     let page = 1;
     let paginate = true;
     let assetList: HeliusDigitalAsset[] = [];
-
+  
     while (paginate) {
-        try {
-            const responseJson = await makePaginatedPostRequest(heliusUrl, {
-                jsonrpc: "2.0",
-                id: id ? id : `creator-id-${page}`,
-                method: "getAssetsByCreator",
-                params: {
-                    creatorAddress: creator,
-                    onlyVerified: onlyVerified,
-                    page: page,
-                    limit: 1000,
-                },
-            });
-
-            const { result } = responseJson as HeliusDigitalAssetsResult;
-            assetList.push(...result.items);
-
-            if (result.total !== 1000) {
-                paginate = false;
-            } else {
-                page++;
-            }
-        } catch (e) {
-            console.error(`Error on page ${page}:`, e);
-            break; // Break the loop in case of persistent error
+      try {
+        const params = {
+          ...options.params, // Spread any additional parameters
+          page: page,
+          limit: 1000,
+        };
+  
+        const responseJson = await makePostRequestWithBackoff(options.heliusUrl, {
+          jsonrpc: "2.0",
+          id: options.requestId ? `${options.requestId}-${page}` : `${options.method}-id-${page}`,
+          method: options.method,
+          params: params,
+        });
+  
+        const { result } = responseJson as HeliusDigitalAssetsResult;
+        assetList.push(...result.items);
+  
+        if (result.total !== 1000) {
+          paginate = false;
+        } else {
+          page++;
         }
+      } catch (e) {
+        console.error(`Error in method ${options.method} on page ${page}:`, e, options.params);
+        break;
+      }
     }
-
-    console.timeEnd("getAssetsByCreator");
+  
+    console.timeEnd(`${options.method}`);
     const resultData = {
-        totalResults: assetList.length,
-        results: assetList,
+      totalResults: assetList.length,
+      results: assetList,
     };
     return resultData;
-};
+  }

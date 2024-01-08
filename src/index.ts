@@ -513,7 +513,7 @@ programCommand('search-collections', { requireWallet: false })
     writeToFile('collectionSearchResult.json', result, {includeTimestamp: true, format: format as Format});
     log.info('Collections written to collectionSearchResult.json');
     if (findOverlap) {
-      const overlap = utility.findCollectionOverlap(result, false);
+      const overlap = utility.findCollectionOverlap(result, true);
       log.info('Finding overlapping holders');
       writeToFile('overlap.json', overlap, {includeTimestamp: true, format: format as Format});
       log.info('Overlap written to overlap.json');
@@ -1187,13 +1187,11 @@ programCommand('format-mint-drop', { requireWallet: false })
       chalk.blue(figlet.textSync('format to csv', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { amount } = cmd.opts();
     let start = now();
     const stringData = fs.readFileSync(snapshot, 'utf-8');
     const jsonData = JSON.parse(stringData) as any;
     console.log(jsonData);
     const baseFileName = path.basename(snapshot, path.extname(snapshot));
-    const holders = spltokenairdrop.formatNftDropByWallet(jsonData, amount as number);
     writeToFile(baseFileName, jsonData, {
       format: Format.CSV,
       includeTimestamp: true,
@@ -1326,7 +1324,7 @@ function writeToFile(
         const transformedItem = { ...item };
         for (const [key, value] of Object.entries(item)) {
           if (Array.isArray(value)) {
-            transformedItem[key] = value.join(', ');
+            transformedItem[key] = JSON.stringify(value);
           }
         }
         return transformedItem;
