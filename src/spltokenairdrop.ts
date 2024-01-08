@@ -9,7 +9,7 @@ import * as web3Js from '@solana/web3.js';
 import * as fs from 'fs';
 import * as utility from './helpers/utility';
 import { MintTransfer } from './types/mintTransfer';
-import { AirdropCliRequest, AirdropTypeRequest } from './types/cli';
+import { AirdropCliRequest, AirdropTypeRequest, CollectionSearchRequest } from './types/cli';
 import { LogFiles, MarketPlaces } from './helpers/constants';
 import { HolderAccount, HolderAccountMetadata } from './types/holderaccounts';
 import { TransferError } from './types/errorTransfer';
@@ -34,6 +34,9 @@ import { getConnection } from './helpers/utility';
 import { TransactionAudit, TransactionAuditResponse } from './types/transactionaudit';
 import { BN } from 'bn.js';
 import { Metaplex, PublicKey } from '@metaplex-foundation/js';
+import { CollectionSearch, CollectionSearchResult } from './types/collection';
+import { getAsset, getAssetsByAuthority, getAssetsByCollection, getAssetsByCreator } from './types/helius/fetch';
+import { FetchAssetsFunction } from './types/helius/types';
 
 export async function airdropToken(request: AirdropCliRequest): Promise<any> {
   const {
@@ -171,12 +174,14 @@ export async function airdropTokenPerNft(request: AirdropTypeRequest<HolderAccou
     holders = holders.filter((item) => !exclusionList.includes(item.walletId));
   }
   if (simulate) {
-    return holders.map((x) => {
+    const simulated = holders.map((x) => {
       return {
         wallet: x.walletId,
         transferAmt: utility.uiToNative(transferAmount * x.totalAmount, decimals!).toNumber(),
       };
     });
+    console.log(simulated);
+    return simulated;
   }
 
   const progressBar = getProgressBar();
@@ -190,6 +195,7 @@ export async function airdropTokenPerNft(request: AirdropTypeRequest<HolderAccou
   const walletChunks = utility.chunkItems(holders, batchSize);
   progressBar.start(holders.length, 0);
 
+  //TODO: Sign and send batches of txns add priority fees (if requested)
   for (let walletChunk of walletChunks) {
     await Promise.all(
       walletChunk.map(async (toWallet, index) => {
@@ -309,7 +315,7 @@ function handleError(
   transferErrorJsonPath: string,
   transferErrorTxtPath: string,
 ): void {
-  log.error(chalk.red(errorMsg.message));
+  log.error(chalk.red(errorMsg.message) + "\n");
   fs.appendFileSync(transferErrorTxtPath, JSON.stringify(errorMsg.message, null, 2) + '\n');
   if (!fs.existsSync(transferErrorJsonPath)) {
     fs.writeFileSync(transferErrorJsonPath, JSON.stringify([]));
@@ -334,6 +340,7 @@ export async function retryErrors(
   rpcUrl: string | null = null,
   simulate: boolean = false,
   batchSize: number = 5,
+  checkWalletBalance: boolean = false,
 ): Promise<any> {
   let jsonData: any = {};
   const data = fs.readFileSync(errorJsonFilePath, 'utf8');
@@ -361,7 +368,9 @@ export async function retryErrors(
             splToken.TOKEN_PROGRAM_ID,
             splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
           );
-          const walletAta = await utility.promiseRetry(() =>
+          
+          if (checkWalletBalance) {
+            const walletAta = await utility.promiseRetry(() =>
             splToken.getOrCreateAssociatedTokenAccount(
               connection,
               keypair,
@@ -373,8 +382,22 @@ export async function retryErrors(
               splToken.TOKEN_PROGRAM_ID,
               splToken.ASSOCIATED_TOKEN_PROGRAM_ID,
             ),
-          );
-          if (walletAta.amount < retryError.transferAmount) {
+            );
+            if (walletAta.amount < retryError.transferAmount) {
+              await tryTransferError({
+                toWallet: retryError,
+                connection,
+                keypair,
+                ownerAta,
+                fromWallet,
+                closeAccounts: retryError.isNFT,
+                totalTransferAmt: retryError.transferAmount,
+              });
+            }
+            else {
+              log.warn(chalk.yellow(`${retryError.wallet} already has token ${retryError.mint}`));
+            }
+          } else {
             await tryTransferError({
               toWallet: retryError,
               connection,
@@ -384,8 +407,6 @@ export async function retryErrors(
               closeAccounts: retryError.isNFT,
               totalTransferAmt: retryError.transferAmount,
             });
-          } else {
-            log.warn(chalk.yellow(`${retryError.wallet} already has token ${retryError.mint}`));
           }
           utility.elapsed(start, true, log);
         } catch (err: any) {
@@ -781,7 +802,7 @@ async function tryMintTo(
     mintIfAuthority = true,
     createAtaInstruction,
   } = request;
-  const blockhashResponse = await connection.getLatestBlockhashAndContext();
+  const blockhashResponse = await connection.getLatestBlockhashAndContext("confirmed");
   const txn = new web3Js.Transaction({
     feePayer: keypair.publicKey,
     blockhash: blockhashResponse.value.blockhash,
@@ -811,8 +832,7 @@ async function tryMintTo(
     );
   }
   txn.add(txnIx);
-  txn.sign(keypair);
-  const signature = await sendAndConfrimInternal(connection, txn);
+  const signature = await sendAndConfrimInternal(connection, txn, keypair);
   let message = `${mintIfAuthority ? 'Minted ' : 'Transferred '} ${totalTransferAmt} of ${splicer(
     tokenMint!.toBase58(),
   )} to ${toWallet.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
@@ -841,7 +861,7 @@ async function tryTransfer(request: ITransferRequest<HolderAccount>): Promise<{ 
     },
     false,
   );
-  const signature = await sendAndConfrimInternal(connection, transfer.txn);
+  const signature = await sendAndConfrimInternal(connection, transfer.txn, keypair);
   let message = `Sent ${totalTransferAmt} of ${splicer(
     tokenMint!.toBase58(),
   )} to ${transfer.destination.toBase58()}. https://solscan.io/tx/${signature.txid}  \n`;
@@ -873,7 +893,7 @@ async function tryTransferError(
     },
     closeAccounts,
   );
-  const signature = await sendAndConfrimInternal(connection, transfer.txn);
+  const signature = await sendAndConfrimInternal(connection, transfer.txn, keypair);
   let message = `Sent ${toWallet.transferAmount} of ${splicer(
     transfer.mint.toBase58(),
   )} to ${transfer.destination.toBase58()} .https://solscan.io/tx/${signature.txid}  \n`;
@@ -903,7 +923,7 @@ async function tryTransferMint(request: ITransferRequest<MintTransfer>): Promise
     },
     true,
   );
-  const signature = await sendAndConfrimInternal(connection, transfer.txn);
+  const signature = await sendAndConfrimInternal(connection, transfer.txn, keypair);
   let message = `Sent ${totalTransferAmt} of ${transfer.mint.toBase58()} to ${
     transfer.destination
   }. https://solscan.io/tx/${signature.txid} \n`;
@@ -939,7 +959,7 @@ async function prepTransfer(
     [keypair],
     splToken.TOKEN_PROGRAM_ID,
   );
-  const blockhashResponse = await connection.getLatestBlockhashAndContext();
+  const blockhashResponse = await connection.getLatestBlockhashAndContext("confirmed");
   const txn = new web3Js.Transaction({
     feePayer: keypair.publicKey,
     blockhash: blockhashResponse.value.blockhash,
@@ -960,7 +980,6 @@ async function prepTransfer(
     );
     txn.add(closeAccount);
   }
-  txn.sign(keypair);
   return {
     txn: txn,
     mint: mintPk,
@@ -968,9 +987,83 @@ async function prepTransfer(
   };
 }
 
+export async function searchCollections(request: CollectionSearchRequest) {
+  const { heliusUrl, collections, filterMarketplaces, filterOutDelegated, filterOutFrozen, includeCollectionName, includeMintIds } = request;
+  const progressBar = getProgressBar();
+  progressBar.start(collections.length, 0);
+  let collectionResults: CollectionSearchResult[] = [];
+  for (let collection of collections) {
+    try {
+      switch(collection.type) {
+        case "collection": {
+          const collectionResult = await processCollection(collection, getAssetsByCollection, heliusUrl, filterOutDelegated, filterOutFrozen, filterMarketplaces, includeCollectionName, includeMintIds);
+          collectionResults.push(collectionResult);
+          break;
+        }
+        case "creator": {
+          const collectionResult = await processCollection(collection, getAssetsByCreator, heliusUrl, filterOutDelegated, filterOutFrozen, filterMarketplaces, includeCollectionName, includeMintIds);
+          collectionResults.push(collectionResult);
+          break;
+        }
+        case "authority": {
+          const collectionResult = await processCollection(collection, getAssetsByAuthority, heliusUrl, filterOutDelegated, filterOutFrozen, filterMarketplaces, includeCollectionName, includeMintIds);
+          collectionResults.push(collectionResult);
+          break;
+        }
+        default: 
+          throw new Error(`Invalid collection type  ${collection.type}`)
+      }
+      progressBar.increment();
+    } catch (err: any) {
+      log.error(err);
+    }
+  }
+  progressBar.stop();
+  return collectionResults;
+}
+
+async function processCollection(collection: CollectionSearch, fetchAssets: FetchAssetsFunction, heliusUrl: string, filterOutDelegated?: boolean, filterOutFrozen?: boolean, filterMarketplaces?: boolean, includeCollectionName?: boolean, includeMintIds?: boolean) {
+  let collectionMint = {
+    address: collection.address,
+    type: collection.type,
+    collectionName: collection.name ? collection.name : collection.address,
+  }
+  if (includeCollectionName && includeCollectionName == true && collection.type == "collection") {
+    const collectionMetadata = await getAsset(heliusUrl, collection.address);
+    collectionMint = {
+      ...collectionMint,
+      collectionName: collectionMetadata.content.metadata.name,
+    }
+  }
+  let { results } = await fetchAssets(heliusUrl, collection.address);
+  const delegatedCount = results.reduce((acc, curr) => acc + (curr.ownership.delegated === true ? 1 : 0), 0);
+  const frozenCount = results.reduce((acc, curr) => acc + (curr.ownership.frozen === true ? 1 : 0), 0);  
+  if (filterOutDelegated && filterOutDelegated == true) {
+    results = results.filter((x) => !x.ownership.delegated);
+  }
+  if (filterOutFrozen && filterOutFrozen == true) {
+    results = results.filter((x) => !x.ownership.frozen);
+  }
+  const holders = utility.convertFromHeliusResultToHolderAccount(results);
+  const filteredHolders = filterMarketplaces ? filterMarketPlacesByHolders(holders) : holders;
+  const finalHolders = includeMintIds ? filteredHolders : filteredHolders.map((x) => { return { walletId: x.walletId, totalAmount: x.totalAmount, mintIds: [] } as HolderAccount });
+  const collectionResult: CollectionSearchResult = {
+    address: collection.address,
+    type: collection.type,
+    verified: true,
+    delegated: delegatedCount,
+    frozen: frozenCount,
+    holders: finalHolders.length,
+    holderMints: finalHolders,
+    collectionName: collectionMint.collectionName,
+  }
+  return collectionResult;
+}
+
 async function sendAndConfrimInternal(
   connection: web3Js.Connection,
   txn: web3Js.Transaction,
+  keypair: web3Js.Keypair,
   sendOptions: web3Js.SendOptions = {
     maxRetries: 0,
     skipPreflight: true,
@@ -983,9 +1076,12 @@ async function sendAndConfrimInternal(
 ): Promise<{ txid: string }> {
   const spinner = getSpinner();
   spinner.start();
+  const latestBlockHash = await connection.getLatestBlockhash(commitment)
+  txn.recentBlockhash = latestBlockHash.blockhash;
+  txn.lastValidBlockHeight = latestBlockHash.lastValidBlockHeight;
+  txn.sign(keypair);
   const txnSerialized = txn.serialize();
   const signature = await connection.sendRawTransaction(txnSerialized)
-  const latestBlockHash = await connection.getLatestBlockhash()
   const confirmStrategy: web3Js.BlockheightBasedTransactionConfirmationStrategy = {
     blockhash: latestBlockHash.blockhash,
     lastValidBlockHeight: latestBlockHash.lastValidBlockHeight,
@@ -995,8 +1091,9 @@ async function sendAndConfrimInternal(
   if (!result?.value?.err) {
     spinner.succeed();
   } else {
-    spinner.stop();
+    spinner.clear();
   }
+ 
   return { txid: signature };
 }
 
@@ -1028,6 +1125,7 @@ function isNotMarketPlace(walletId: string): boolean {
     MarketPlaces.DigitalEyes,
     MarketPlaces.ExchangeArt,
     MarketPlaces.Solanart,
+    MarketPlaces.Tensor,
   ];
   return !mktplaces.includes(walletId);
 }

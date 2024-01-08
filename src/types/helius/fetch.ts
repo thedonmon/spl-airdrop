@@ -1,4 +1,4 @@
-import { HeliusDigitalAsset, HeliusDigitalAssetsResult, TransactionsArray } from "./types";
+import { HeliusDigitalAsset, HeliusDigitalAssetResult, HeliusDigitalAssetsResult, TransactionsArray } from "./types";
 import { backOff } from 'exponential-backoff';
 
 async function makePostRequest(url: string, body: any) {
@@ -86,6 +86,26 @@ export const parseTransactionForAddressByType = async (tokenAddress: string, api
         throw e; // Rethrow the error to handle it in the calling code, if necessary
     }
 }
+
+export const getAsset = async (heliusUrl: string, assetId: string, id?: string) => {
+    try {
+        const responseJson = await makePostRequest(heliusUrl, {
+            jsonrpc: "2.0",
+            id: id ? id : `asset-id-${assetId}`,
+            method: "getAsset",
+            params: {
+                id: assetId,
+            },
+        });
+
+        const { result } = responseJson as HeliusDigitalAssetResult;
+        return result;
+    } catch (e) {
+        console.error(`Error fetching asset ${assetId}:`, e);
+        throw e; // Rethrow the error to handle it in the calling code, if necessary
+    }
+}
+
 export const getAssetsByCollection = async (heliusUrl: string, collection: string, id?: string) => {
     console.time("getAssetsByGroup");
     let page = 1;
@@ -121,6 +141,89 @@ export const getAssetsByCollection = async (heliusUrl: string, collection: strin
     }
 
     console.timeEnd("getAssetsByGroup");
+    const resultData = {
+        totalResults: assetList.length,
+        results: assetList,
+    };
+    return resultData;
+};
+
+export const getAssetsByAuthority = async (heliusUrl: string, authority: string, id?: string) => {
+    console.time("getAssetsByAuthority");
+    let page = 1;
+    let paginate = true;
+    let assetList: HeliusDigitalAsset[] = [];
+
+    while (paginate) {
+        try {
+            const responseJson = await makePaginatedPostRequest(heliusUrl, {
+                jsonrpc: "2.0",
+                id: id ? id : `authority-id-${page}`,
+                method: "getAssetsByAuthority",
+                params: {
+                    authorityAddress: authority,
+                    page: page,
+                    limit: 1000,
+                },
+            });
+
+            const { result } = responseJson as HeliusDigitalAssetsResult;
+            assetList.push(...result.items);
+
+            if (result.total !== 1000) {
+                paginate = false;
+            } else {
+                page++;
+            }
+        } catch (e) {
+            console.error(`Error on page ${page}:`, e);
+            break; // Break the loop in case of persistent error
+        }
+    }
+
+    console.timeEnd("getAssetsByAuthority");
+    const resultData = {
+        totalResults: assetList.length,
+        results: assetList,
+    };
+    return resultData;
+};
+
+export const getAssetsByCreator = async (heliusUrl: string, creator: string, onlyVerified: boolean = true, id?: string) => {
+    console.time("getAssetsByCreator");
+    let page = 1;
+    let paginate = true;
+    let assetList: HeliusDigitalAsset[] = [];
+
+    while (paginate) {
+        try {
+            const responseJson = await makePaginatedPostRequest(heliusUrl, {
+                jsonrpc: "2.0",
+                id: id ? id : `creator-id-${page}`,
+                method: "getAssetsByCreator",
+                params: {
+                    creatorAddress: creator,
+                    onlyVerified: onlyVerified,
+                    page: page,
+                    limit: 1000,
+                },
+            });
+
+            const { result } = responseJson as HeliusDigitalAssetsResult;
+            assetList.push(...result.items);
+
+            if (result.total !== 1000) {
+                paginate = false;
+            } else {
+                page++;
+            }
+        } catch (e) {
+            console.error(`Error on page ${page}:`, e);
+            break; // Break the loop in case of persistent error
+        }
+    }
+
+    console.timeEnd("getAssetsByCreator");
     const resultData = {
         totalResults: assetList.length,
         results: assetList,

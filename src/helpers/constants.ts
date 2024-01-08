@@ -8,7 +8,7 @@ export class MarketPlaces {
   public static MagicEden: string = 'GUfCR9mK6azb9vcpsxgXyj7XRPAKJd4KMHTTVvtncGgp';
   public static Solanart: string = '3D49QorJyNaL4rcpiynbuS3pRH4Y7EXEM6v6ZGaqfFGK';
   public static MagicEden2: string = '1BWutmTvYPwDtmw9abTkS4Ssr8no61spGAvW1X6NDix';
-  public static Misc: string = '67REPFbTve6crS4tK8BihF97YCJAnnLeanvdSbDXqfsb';
+  public static Tensor: string = '4zdNGgAtFsW1cQgHqkiWyRsxaAgxrSRRynnuunxzjxue';
 }
 
 /**

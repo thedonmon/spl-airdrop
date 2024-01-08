@@ -1,0 +1,18 @@
+[
+    {
+        "name": "SMB",
+        "address": "SMBtHCCC6RYRutFEPb4gZqeBLUZbMNhRKaMKZZLHi7W",
+        "type": "collection"
+    },
+    {
+        "name": "Boogles",
+        "address": "J2AQypFpiKeDnp8feiVDptnyjcEsb4noPudcjGmnp6XB",
+        "type": "creator",
+        "verified": true
+    },
+    {
+        "name": "HotHeads",
+        "address": "CywHUY59AFi7nmGf9kVfNgd39TD9rnkyx6GfWsn5iNnE",
+        "type": "authority"
+    }
+]

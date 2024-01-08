@@ -214,3 +214,5 @@ export type DelegateAddressType = {
 	address: string;
 	signed: boolean;
 }
+
+export type FetchAssetsFunction = (url: string, address: string) => Promise<{ totalResults: number; results: HeliusDigitalAsset[]; }>;

@@ -36,6 +36,9 @@ import { FormatObject } from './types/formatObject';
 import { Options, Parser } from '@json2csv/plainjs';
 import { json } from 'stream/consumers';
 import bs58 from 'bs58';
+import { TransferError } from './types/errorTransfer';
+import { CollectionSearch } from './types/collection';
+import { CollectionSearchRequest } from './types/cli';
 
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
@@ -176,6 +179,9 @@ programCommand('airdrop-token')
       batchSize,
       exclusionList,
     });
+    if (simulate) {
+      writeToFile('simulation.json', result, { includeTimestamp: true });
+    }
     log.info(result);
     elapsed(start, true, undefined, true);
   });
@@ -357,17 +363,48 @@ programCommand('get-holders', { requireWallet: false })
 programCommand('get-holders-v2', { requireWallet: false })
 .argument('<collectionId>', 'CollectionId')
 .requiredOption('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+.option('-fm, --filter-mktp', 'filter out known mktplaces', false)
 .action(async (collectionId: string, options, cmd) => {
   console.log(
     chalk.blue(figlet.textSync('get holders v2', { horizontalLayout: 'controlled smushing' })),
   );
   clearLogFiles();
-  const { env, rpcUrl } = cmd.opts();
+  const { env, rpcUrl, filterMktp } = cmd.opts();
+  console.log(env, rpcUrl, filterMktp, cmd.opts());
   let start = now();
   if (collectionId) {
     const result = await utility.getSnapshotByCollectionV2(collectionId, rpcUrl);
+    if (filterMktp) {
+      const filtered = spltokenairdrop.filterMarketPlacesByHolders(result);
+      writeToFile('holders.json', filtered, { includeTimestamp: true });
+      log.info('Holders written to holders.json');
+      log.info(filtered);
+      elapsed(start, true, undefined, true);
+      return;
+    }
     writeToFile('holders.json', result, { includeTimestamp: true });
     log.info('Holders written to holders.json');
+    log.info(result);
+  } else {
+    log.warn('Please check collectionId is correct');
+  }
+  elapsed(start, true, undefined, true);
+});
+
+programCommand('get-mints-v2', { requireWallet: false })
+.argument('<collectionId>', 'CollectionId')
+.requiredOption('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+.action(async (collectionId: string, options, cmd) => {
+  console.log(
+    chalk.blue(figlet.textSync('get mints v2', { horizontalLayout: 'controlled smushing' })),
+  );
+  clearLogFiles();
+  const { env, rpcUrl } = cmd.opts();
+  let start = now();
+  if (collectionId) {
+    const result = await utility.getMintIdsByCollectionV2(collectionId, rpcUrl);
+    writeToFile('mints.json', result, { includeTimestamp: true });
+    log.info('Holders written to mints.json');
     log.info(result);
   } else {
     log.warn('Please check collectionId is correct');
@@ -441,6 +478,45 @@ programCommand('close-cm', { requireWallet: true })
       log.info(`Candymachine ${candymachineid} closed ${result}`);
     } catch (e) {
       log.error(chalk.red(`Error closing candy machine ${candymachineid}`), e);
+    }
+    elapsed(start, true, undefined, true);
+  });
+
+programCommand('search-collections', { requireWallet: false })
+  .argument('<collectionFile>', 'Collections search file path')
+  .requiredOption('-r, --rpc-url <string>', 'Helius RPC URL')
+  .option('-h, --include-collection-name', 'include collection name in output', false)
+  .option('-fm, --filter-mktp', 'filter out known mktplaces', false)
+  .option('-ff, --filter-frozen', 'filter out frozen', false)
+  .option('-fd, --filter-delegated', 'filter out delegated', false)
+  .option('-im, --include-mint-ids', 'include mint ids in output', false)
+  .option('-f, --format <string>', 'file format of the output', 'json')
+  .option('-fco, --find-overlap', 'find overlap in holders', false)
+  .action(async (collectionFile: string, options, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('search collections', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    const { env, rpcUrl, includeCollectionName, filterMktp, filterFrozen, filterDelegated, format, includeMintIds, findOverlap } = cmd.opts();
+    let start = now();
+    const collections = JSON.parse(fs.readFileSync(collectionFile, 'utf-8')) as CollectionSearch[];
+    const collectionSearchRequest: CollectionSearchRequest = {
+      heliusUrl: rpcUrl,
+      collections,
+      includeCollectionName,
+      filterMarketplaces: filterMktp,
+      filterOutFrozen: filterFrozen,
+      filterOutDelegated: filterDelegated,
+      includeMintIds: includeMintIds,
+    };
+    const result = await spltokenairdrop.searchCollections(collectionSearchRequest);
+    writeToFile('collectionSearchResult.json', result, {includeTimestamp: true, format: format as Format});
+    log.info('Collections written to collectionSearchResult.json');
+    if (findOverlap) {
+      const overlap = utility.findCollectionOverlap(result, false);
+      log.info('Finding overlapping holders');
+      writeToFile('overlap.json', overlap, {includeTimestamp: true, format: format as Format});
+      log.info('Overlap written to overlap.json');
     }
     elapsed(start, true, undefined, true);
   });
@@ -854,6 +930,69 @@ programCommand('format-snapshot', { requireWallet: false })
     elapsed(start, true);
   });
 
+  programCommand('get-address-from-text', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('get-address from text', { horizontalLayout: 'controlled smushing' })),
+    );
+    let start = now();
+    const { format } = cmd.opts();
+    const fileFormat = format as Format;
+
+    // Read the file
+    const filePath = path.resolve(snapshot);
+    const fileContent = fs.readFileSync(filePath, 'utf8');
+    
+    // Extract addresses
+    const lines = fileContent.split('\n');
+    const addresses = lines.map(line => {
+      const startIdx = line.indexOf(' to ') + 4;
+      const endIdx = line.indexOf(' ', startIdx);
+      return line.substring(startIdx, endIdx).trim();
+    });
+
+    // Write to JSON file
+    writeToFile('success_address', addresses, { format: fileFormat });
+
+    log.info(`Addresses written to success_address.${format}`);
+    elapsed(start, true);
+  });
+
+  programCommand('exclude-addresses-error', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .requiredOption('-ex, --excluded <path>', 'path to list of wallets to exclude')
+  .option('-f, --format <string>', 'file format of the holderlist', 'json')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('get-address from text', { horizontalLayout: 'controlled smushing' })),
+    );
+    let start = now();
+    const { format, excluded } = cmd.opts();
+    const fileFormat = format as Format;
+    const excludedFilePath = path.resolve(excluded);
+    const excludedFileContent = fs.readFileSync(excludedFilePath, 'utf8');
+    const excludedAddresses = JSON.parse(excludedFileContent) as string[];
+    if (!excludedAddresses) {
+      log.error('Addresses not found in file. Must be an array of strings');
+      return;
+    }
+    // Read the file
+    const filePath = path.resolve(snapshot);
+    const fileContent = fs.readFileSync(filePath, 'utf8');
+    const errorObjects = JSON.parse(fileContent) as TransferError[];
+    // Extract addresses
+    const filteredErrorObjects = errorObjects.filter(errorObject => !excludedAddresses.includes(errorObject.wallet))
+
+
+    // Write to JSON file
+    writeToFile('excluded_addresses', filteredErrorObjects, { format: fileFormat });
+
+    log.info(`Addresses written to success_address.${format}`);
+    elapsed(start, true);
+  });
+
 programCommand('fromSecretKey', { requireWallet: false })
   .argument('<key>', 'privatekey')
   .option('-f, --format <string>', 'file format of the holderlist', 'json')
@@ -1040,6 +1179,28 @@ programCommand('format-mint-drop', { requireWallet: false })
     log.info('Holders written to holders.json');
     elapsed(start, true, undefined, true);
   });
+
+  programCommand('format-to-csv', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .action(async (snapshot: string, _, cmd) => {
+    log.info(
+      chalk.blue(figlet.textSync('format to csv', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    const { amount } = cmd.opts();
+    let start = now();
+    const stringData = fs.readFileSync(snapshot, 'utf-8');
+    const jsonData = JSON.parse(stringData) as any;
+    console.log(jsonData);
+    const baseFileName = path.basename(snapshot, path.extname(snapshot));
+    const holders = spltokenairdrop.formatNftDropByWallet(jsonData, amount as number);
+    writeToFile(baseFileName, jsonData, {
+      format: Format.CSV,
+      includeTimestamp: true,
+    });
+    log.info('File converted written to written to csv');
+    elapsed(start, true, undefined, true);
+  });
 // From commander examples
 function myParseInt(value: any) {
   // parseInt takes a string and a radix
@@ -1160,6 +1321,26 @@ function writeToFile(
     const jsonData = JSON.stringify(data);
     fs.writeFileSync(filePath, jsonData);
   } else {
+    if (!fields || fields.length === 0) {
+      const csvData = data.map((item: any) => {
+        const transformedItem = { ...item };
+        for (const [key, value] of Object.entries(item)) {
+          if (Array.isArray(value)) {
+            transformedItem[key] = value.join(', ');
+          }
+        }
+        return transformedItem;
+      });
+  
+      // Use the first item to determine fields
+      const fields = csvData.length > 0 ? Object.keys(csvData[0]) : [];
+      const opts = { fields };
+      const parser = new Parser(opts);
+      const csv = parser.parse(csvData);
+  
+      fs.writeFileSync(filePath, csv);
+    }
+    else {
     let opts: Options = { fields };
     let parser = new Parser(opts);
     let csv: string = '';
@@ -1171,6 +1352,7 @@ function writeToFile(
       csv = parser.parse(data);
     }
     fs.writeFileSync(filePath, csv);
+  }
   }
 }
 

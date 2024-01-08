@@ -26,6 +26,8 @@ import {
 } from '@bonfida/spl-name-service';
 import BN from 'bn.js';
 import BigNumber from 'bignumber.js';
+import { HeliusDigitalAsset } from '../types/helius/types';
+import { CollectionSearchResult } from '../types/collection';
 
 export async function promiseAllInOrder<T>(it: (() => Promise<T>)[]): Promise<Iterable<T>> {
   let ret: T[] = [];
@@ -85,7 +87,7 @@ export const chunkItems = <T>(items: T[], chunkSize?: number) =>
   }, []);
 
 
-  export async function getSnapshotByCollectionV2(collectionId: string, heliusUrl: string) {
+  export async function getSnapshotByCollectionV2(collectionId: string, heliusUrl: string, sortDescending = true, filterOutFrozen = false, filterOutDelegated = false) {
     const assets = await getAssetsByCollection(heliusUrl, collectionId);
     const accountsMap = new Map<string, HolderAccount>();
     const progressBar = getProgressBar();
@@ -95,7 +97,12 @@ export const chunkItems = <T>(items: T[], chunkSize?: number) =>
     for (const asset of assets.results) {
       const walletId = asset.ownership.owner;
       const existingHolder = accountsMap.get(walletId);
-
+      if (filterOutFrozen && asset.ownership.frozen) {
+        continue;
+      }
+      if (filterOutDelegated && asset.ownership.delegated) {
+        continue;
+      }
       if (existingHolder) {
         existingHolder.mintIds.push(asset.id);
         existingHolder.totalAmount += 1;
@@ -108,10 +115,41 @@ export const chunkItems = <T>(items: T[], chunkSize?: number) =>
       }
       progressBar.increment();
     }
-    const accounts = Array.from(accountsMap.values());
     progressBar.stop();
+
+    let accounts = Array.from(accountsMap.values());
+
+    // Sort accounts by totalAmount in descending order if the flag is true
+    if (sortDescending) {
+        accounts.sort((a, b) => b.totalAmount - a.totalAmount);
+    }
+
+    log.info("Accounts: ", accounts);
     return accounts;
-  }  
+}
+
+export function convertFromHeliusResultToHolderAccount(assets: HeliusDigitalAsset[], sortDescending = true) {
+  const accountsMap = new Map<string, HolderAccount>();
+  for (const asset of assets) {
+    const walletId = asset.ownership.owner;
+    const existingHolder = accountsMap.get(walletId);
+    if (existingHolder) {
+      existingHolder.mintIds.push(asset.id);
+      existingHolder.totalAmount += 1;
+    } else {
+      accountsMap.set(walletId, {
+        walletId: walletId,
+        totalAmount: 1,
+        mintIds: [asset.id],
+      });
+    }
+  }
+  let accounts = Array.from(accountsMap.values());
+  if (sortDescending) {
+    accounts.sort((a, b) => b.totalAmount - a.totalAmount);
+  }
+  return accounts;
+}
 
   export async function getSnapshotByCollectionWithMetadataV2(collectionId: string, heliusUrl: string) {
     const assets = await getAssetsByCollection(heliusUrl, collectionId);
@@ -647,4 +685,130 @@ export function nativeToUi(
 export function roundToDecimalPlace(num: number, places: number) {
   const multiplier = Math.pow(10, places);
   return Math.round(num * multiplier) / multiplier;
+}
+
+
+type WalletCollectionMap = {
+  [walletId: string]: Set<string>;
+};
+
+// Define a type for detailed collection overlap information
+type CollectionOverlapDetail = {
+  address: string;
+  collectionName?: string;
+  overlappingWalletsCount: number;
+};
+
+// Define a type for the overall overlap result
+type CollectionOverlapByWalletResult = {
+  walletId: string;
+  collections: CollectionOverlapDetail[];
+  totalOverlapCount: number;
+};
+type WalletOverlapDetail = {
+  walletId: string;
+  overlappingCollections: string[];
+};
+
+// Define a type for collection level overlap information
+type CollectionOverlapInfo = {
+  address: string;
+  collectionName?: string;
+  totalWallets: number;
+  overlappingWalletsCount: number;
+  walletOverlapDetails: WalletOverlapDetail[];
+};
+
+export function findCollectionOverlap(results: CollectionSearchResult[], excludeWalletDetails: boolean = false): CollectionOverlapInfo[] {
+  const walletMap: WalletCollectionMap = {};
+  const collectionInfoMap: Record<string, CollectionOverlapInfo> = {};
+
+  // Initialize collection info map
+  results.forEach(result => {
+    collectionInfoMap[result.address] = {
+      address: result.address,
+      collectionName: result.collectionName,
+      totalWallets: result.holderMints.length,
+      overlappingWalletsCount: 0,
+      walletOverlapDetails: []
+    };
+  });
+
+  // Create the wallet to collections mapping
+  results.forEach(result => {
+    result.holderMints.forEach(holder => {
+      if (!walletMap[holder.walletId]) {
+        walletMap[holder.walletId] = new Set();
+      }
+      walletMap[holder.walletId].add(result.address);
+    });
+  });
+
+  // Analyze overlaps and update collection info
+  Object.entries(walletMap).forEach(([walletId, collections]) => {
+    if (collections.size > 1) {
+      collections.forEach(collectionAddress => {
+        const collectionInfo = collectionInfoMap[collectionAddress];
+        collectionInfo.overlappingWalletsCount += 1;
+        collectionInfo.walletOverlapDetails.push({
+          walletId,
+          overlappingCollections: Array.from(collections).filter(addr => addr !== collectionAddress)
+        });
+      });
+    }
+  });
+
+  // Prepare final collection-level results
+  const overlapResults: CollectionOverlapInfo[] = Object.values(collectionInfoMap);
+  if (excludeWalletDetails) {
+    overlapResults.forEach(result => {
+      result.walletOverlapDetails = [];
+    });
+  }
+  return overlapResults;
+}
+
+export function findCollectionOverlapByWallet(results: CollectionSearchResult[]): CollectionOverlapByWalletResult[] {
+  const walletMap: WalletCollectionMap = {};
+  const collectionDetails: Record<string, CollectionOverlapDetail> = {};
+
+  // Create the mapping and collection details
+  results.forEach(result => {
+    const collectionIdentifier = result.collectionName ?? result.address;
+    collectionDetails[result.address] = {
+      address: result.address,
+      collectionName: result.collectionName,
+      overlappingWalletsCount: 0
+    };
+
+    result.holderMints.forEach(holder => {
+      if (!walletMap[holder.walletId]) {
+        walletMap[holder.walletId] = new Set();
+      }
+      walletMap[holder.walletId].add(result.address);
+    });
+  });
+
+  // Analyze overlaps and update collection details
+  Object.entries(walletMap).forEach(([walletId, collections]) => {
+    if (collections.size > 1) {
+      collections.forEach(collectionAddress => {
+        collectionDetails[collectionAddress].overlappingWalletsCount += 1;
+      });
+    }
+  });
+
+  // Prepare final results
+  const overlapResults: CollectionOverlapByWalletResult[] = [];
+  Object.entries(walletMap).forEach(([walletId, collections]) => {
+    if (collections.size > 1) {
+      overlapResults.push({
+        walletId,
+        collections: Array.from(collections).map(address => collectionDetails[address]),
+        totalOverlapCount: collections.size
+      });
+    }
+  });
+
+  return overlapResults;
 }

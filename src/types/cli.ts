@@ -1,4 +1,5 @@
 import * as web3Js from '@solana/web3.js';
+import { CollectionSearch } from './collection';
 
 export interface AirdropCliRequest {
   keypair: web3Js.Keypair;
@@ -19,4 +20,14 @@ export interface AirdropTypeRequest<T> extends AirdropCliRequest {
   tokenMint?: web3Js.PublicKey;
   decimals?: number;
   transferAmount: number;
+}
+
+export interface CollectionSearchRequest {
+  heliusUrl: string;
+  collections: CollectionSearch[];
+  includeCollectionName?: boolean;
+  filterMarketplaces?: boolean;
+  filterOutFrozen?: boolean;
+  filterOutDelegated?: boolean;
+  includeMintIds?: boolean;
 }
