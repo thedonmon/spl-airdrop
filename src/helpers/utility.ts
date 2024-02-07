@@ -11,7 +11,7 @@ import { Nft } from '@metaplex-foundation/js';
 import axios from 'axios';
 import { Metadata } from './metaplexschema';
 import { MetadataModel } from '../types/metadata';
-import { getAssetsByCollection, parseTransactionForAddressByType } from "../types/helius/fetch";
+import { getAssetsByAuthority, getAssetsByCollection, getAssetsByCreator, parseTransactionForAddressByType } from "../types/helius/fetch";
 import chalk from 'chalk';
 import {
   filterMarketPlacesByWallet,
@@ -188,6 +188,16 @@ export function convertFromHeliusResultToHolderAccount(assets: HeliusDigitalAsse
 
   export async function getMintIdsByCollectionV2(collectionId: string, heliusUrl: string) {
     const assets = await getAssetsByCollection(heliusUrl, collectionId);
+    return assets.results.map((asset) => asset.id);
+  }
+
+  export async function getMintIdsByAuthorityV2(authority: string, heliusUrl: string) {
+    const assets = await getAssetsByAuthority(heliusUrl, authority);
+    return assets.results.map((asset) => asset.id);
+  }
+
+  export async function getMintIdsByCreatorV2(creator: string, onlyVerified: boolean, heliusUrl: string) {
+    const assets = await getAssetsByCreator(heliusUrl, creator, onlyVerified);
     return assets.results.map((asset) => asset.id);
   }
 

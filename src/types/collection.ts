@@ -17,6 +17,7 @@ export type CollectionSearchResult = {
     frozen: number,
     delegated: number,
     holderMints: HolderAccount[],
+    mintIds: string[],
 }
 
 export type CollectionSearchOverlapHolders = {

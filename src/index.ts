@@ -377,14 +377,13 @@ programCommand('get-holders-v2', { requireWallet: false })
     if (filterMktp) {
       const filtered = spltokenairdrop.filterMarketPlacesByHolders(result);
       writeToFile('holders.json', filtered, { includeTimestamp: true });
-      log.info('Holders written to holders.json');
-      log.info(filtered);
+      log.info('Holders written to holders.json', filtered.length);
       elapsed(start, true, undefined, true);
       return;
     }
     writeToFile('holders.json', result, { includeTimestamp: true });
-    log.info('Holders written to holders.json');
-    log.info(result);
+
+    log.info('Holders written to holders.json', result.length);
   } else {
     log.warn('Please check collectionId is correct');
   }
@@ -404,10 +403,52 @@ programCommand('get-mints-v2', { requireWallet: false })
   if (collectionId) {
     const result = await utility.getMintIdsByCollectionV2(collectionId, rpcUrl);
     writeToFile('mints.json', result, { includeTimestamp: true });
-    log.info('Holders written to mints.json');
+    log.info('Mints written to mints.json');
     log.info(result);
   } else {
     log.warn('Please check collectionId is correct');
+  }
+  elapsed(start, true, undefined, true);
+});
+
+programCommand('get-mints-authority-v2', { requireWallet: false })
+.argument('<authority>', 'authority')
+.requiredOption('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+.action(async (authority: string, options, cmd) => {
+  console.log(
+    chalk.blue(figlet.textSync('get mints v2', { horizontalLayout: 'controlled smushing' })),
+  );
+  clearLogFiles();
+  const { env, rpcUrl } = cmd.opts();
+  let start = now();
+  if (authority) {
+    const result = await utility.getMintIdsByAuthorityV2(authority, rpcUrl);
+    writeToFile('mints_authority.json', result, { includeTimestamp: true });
+    log.info('Mints written to mints_authority.json');
+    log.info(result);
+  } else {
+    log.warn('Please check update authority key is correct');
+  }
+  elapsed(start, true, undefined, true);
+});
+
+programCommand('get-mints-creator-v2', { requireWallet: false })
+.argument('<creator>', 'creator')
+.requiredOption('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+.action(async (creator: string, options, cmd) => {
+  console.log(
+    chalk.blue(figlet.textSync('get mints v2', { horizontalLayout: 'controlled smushing' })),
+  );
+  clearLogFiles();
+  const { env, rpcUrl } = cmd.opts();
+  let start = now();
+  if (creator) {
+    const result = await utility.getMintIdsByCreatorV2(creator, true, rpcUrl);
+    writeToFile('mints_creator.json', result, { includeTimestamp: true });
+    log.info('Mints written to mints_creator.json');
+    log.info(result);
+  } else {
+    log.warn('Please check verified creator key is correct');
   }
   elapsed(start, true, undefined, true);
 });
@@ -492,12 +533,14 @@ programCommand('search-collections', { requireWallet: false })
   .option('-im, --include-mint-ids', 'include mint ids in output', false)
   .option('-f, --format <string>', 'file format of the output', 'json')
   .option('-fco, --find-overlap', 'find overlap in holders', false)
+  .option('-fu, --find-unique', 'find unique holders', false)
+  .option('-fs, --find-sellers <string>', 'find sellers from a collection')
   .action(async (collectionFile: string, options, cmd) => {
     console.log(
       chalk.blue(figlet.textSync('search collections', { horizontalLayout: 'controlled smushing' })),
     );
     clearLogFiles();
-    const { env, rpcUrl, includeCollectionName, filterMktp, filterFrozen, filterDelegated, format, includeMintIds, findOverlap } = cmd.opts();
+    const { env, rpcUrl, includeCollectionName, filterMktp, filterFrozen, filterDelegated, format, includeMintIds, findOverlap, findUnique, findSellers } = cmd.opts();
     let start = now();
     const collections = JSON.parse(fs.readFileSync(collectionFile, 'utf-8')) as CollectionSearch[];
     const collectionSearchRequest: CollectionSearchRequest = {
@@ -510,13 +553,92 @@ programCommand('search-collections', { requireWallet: false })
       includeMintIds: includeMintIds,
     };
     const result = await spltokenairdrop.searchCollections(collectionSearchRequest);
-    writeToFile('collectionSearchResult.json', result, {includeTimestamp: true, format: format as Format});
+    writeToFile('collection_search_result.json', result, {includeTimestamp: true, format: format as Format});
     log.info('Collections written to collectionSearchResult.json');
     if (findOverlap) {
-      const overlap = utility.findCollectionOverlap(result, true);
+      const overlap = utility.findCollectionOverlap(result, false);
       log.info('Finding overlapping holders');
-      writeToFile('overlap.json', overlap, {includeTimestamp: true, format: format as Format});
+      writeToFile('collection_search_overlap.json', overlap, {includeTimestamp: true, format: format as Format});
       log.info('Overlap written to overlap.json');
+    }
+    if(findUnique) {
+      const allHolders = result.map(x => x.holderMints.map(x => x.walletId)).flat();
+      log.info('All holders count', allHolders.length)
+      const unique = _.uniq(allHolders);
+      log.info('Unique holders count', unique.length)
+      log.info('Finding unique holders');
+      writeToFile('collection_search_unique.json', unique, {includeTimestamp: true, format: format as Format});
+      log.info('Unique written to unique.json');
+    }
+    if (findSellers) {
+      const url = new URL(rpcUrl);
+      const queryParams = new URLSearchParams(url.search);
+      const apiKey = queryParams.get('api-key');
+      if (!apiKey) {
+        log.error('API Key not found in RPC URL');
+        return;
+      }
+      const collectionSellers = result.find(x => x.address == "J2AQypFpiKeDnp8feiVDptnyjcEsb4noPudcjGmnp6XB");
+      const collectionToFind = result.find(x => x.address == findSellers);
+      const mintIds = collectionToFind?.mintIds?? [];
+      const sellers = await spltokenairdrop.getSalesByMints(mintIds, apiKey, env);
+      const collectionSellersWallets = collectionSellers?.holderMints.map(x => x.walletId)?? [];
+      const walletSales: Record<string, WalletDetail> = {};
+
+      // Initialize aggregate information
+      let totalNftsSold = 0;
+      let totalSalesAmount = 0;
+    
+      sellers.forEach(sale => {
+        // Increment the total number of NFTs sold and total sales amount
+        totalNftsSold += 1;
+        totalSalesAmount += sale.amount;
+    
+        // If we have not seen this wallet before, initialize it
+        if (!walletSales[sale.seller]) {
+          walletSales[sale.seller] = { walletId: sale.seller, nftsSold: 0, totalAmount: 0 };
+        }
+    
+        // Increment the count of NFTs sold and the total amount for the wallet
+        walletSales[sale.seller].nftsSold += 1;
+        walletSales[sale.seller].totalAmount += sale.amount;
+      });
+    
+      // Prepare the detailed summary for each wallet
+
+      interface WalletDetail {
+        walletId: string;
+        nftsSold: number;
+        totalAmount: number;
+      }
+      
+      interface SalesSummary {
+        distinctWalletsCount: number;
+        totalNftsSold: number;
+        totalSalesAmount: number;
+        details: WalletDetail[];
+      }
+  const completeSummary: SalesSummary = {
+    distinctWalletsCount: Object.keys(walletSales).length,
+    totalNftsSold: totalNftsSold,
+    totalSalesAmount: totalSalesAmount,
+    details: Object.values(walletSales),
+  };
+
+  // Filter the details based on the provided list of wallet IDs
+  const filteredDetails = completeSummary.details.filter(detail => collectionSellersWallets.includes(detail.walletId));
+
+  // Create the filtered summary
+  const filteredSummary: SalesSummary = {
+    distinctWalletsCount: filteredDetails.length,
+    totalNftsSold: filteredDetails.reduce((acc, detail) => acc + detail.nftsSold, 0),
+    totalSalesAmount: filteredDetails.reduce((acc, detail) => acc + detail.totalAmount, 0),
+    details: filteredDetails,
+  };
+      log.info('Finding sellers');
+      writeToFile('collection_search_sellers.json', completeSummary, {includeTimestamp: true, format: format as Format});
+      writeToFile('collection_search_collection_sellers.json', filteredSummary, {includeTimestamp: true, format: format as Format});
+      log.info('Sellers written to sellers.json');
     }
     elapsed(start, true, undefined, true);
   });
@@ -1037,7 +1159,7 @@ programCommand('format-holderlist-to-wallets', { requireWallet: false })
     const fileFormat = format as Format;
     let start = now();
     const wallets = spltokenairdrop.formatFromHolderListToWalletList(holderlist);
-    writeToFile('wallets', wallets, { format: fileFormat });
+    writeToFile('wallets', wallets, { format: fileFormat, includeTimestamp: true });
     log.info(`Wallets written to wallets.${fileFormat}`);
     elapsed(start, true, undefined, true);
   });
@@ -1126,6 +1248,32 @@ programCommand('format-mint-drop', { requireWallet: false })
     const holdersStr = JSON.stringify(holders);
     fs.writeFileSync('nfttransfer.json', holdersStr);
     log.info('Holders written to holders.json');
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('format-wallets-to-drop', { requireWallet: false })
+  .argument('<snapshot>', 'snapshot path')
+  .requiredOption('-a, --amount <number>', 'Amount per account')
+  .action(async (snapshot: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('format mint drop', { horizontalLayout: 'controlled smushing' })),
+    );
+    clearLogFiles();
+    const { amount } = cmd.opts();
+    let start = now();
+    const stringData = fs.readFileSync(snapshot, 'utf-8');
+    const jsonData = JSON.parse(stringData) as string[];
+    let holderAccounts: HolderAccount[] = [];
+    for (const wallet of jsonData) {
+      let holderAccount: HolderAccount = {
+        walletId: wallet,
+        totalAmount: amount as number,
+        mintIds: [],
+      };
+      holderAccounts.push(holderAccount);
+    }
+    writeToFile('tokentransfer.json', holderAccounts, { includeTimestamp: true, format: Format.JSON });
+    log.info('Holders written to tokentransfer.json');
     elapsed(start, true, undefined, true);
   });
 

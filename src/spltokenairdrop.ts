@@ -35,7 +35,7 @@ import { TransactionAudit, TransactionAuditResponse } from './types/transactiona
 import { BN } from 'bn.js';
 import { Metaplex, PublicKey } from '@metaplex-foundation/js';
 import { CollectionSearch, CollectionSearchResult } from './types/collection';
-import { getAsset, getAssetsByAuthority, getAssetsByCollection, getAssetsByCreator } from './types/helius/fetch';
+import { getAsset, getAssetsByAuthority, getAssetsByCollection, getAssetsByCreator, parseTransactionForAddressByType } from './types/helius/fetch';
 import { FetchAssetsFunction } from './types/helius/types';
 
 export async function airdropToken(request: AirdropCliRequest): Promise<any> {
@@ -950,7 +950,7 @@ async function prepTransfer(
   const toWalletPk = new web3Js.PublicKey(toWallet);
   const mintPk = tokenMint!;
   const { instruction: createAtaIx, accountKey: walletAta } =
-    await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey);
+    await getOrCreateTokenAccountInstruction(mintPk, toWalletPk, connection, keypair.publicKey, true);
   const txnIns = splToken.createTransferInstruction(
     ownerAta,
     walletAta,
@@ -985,6 +985,43 @@ async function prepTransfer(
     mint: mintPk,
     destination: toWalletPk,
   };
+}
+
+export async function getSalesByMints(mints: string[], heliusApiKey: string, cluster: string = 'devnet') {
+  const progressBar = getProgressBar();
+  progressBar.start(mints.length, 0);
+
+  let sales: { seller: string; mint: string; amount: number }[] = [];
+
+  // Function to process a single mint
+  async function processMint(mint: string) {
+    try {
+      const allSales = await parseTransactionForAddressByType(mint, heliusApiKey, 'NFT_SALE', cluster);
+      const firstSale = _.sortBy(allSales, (x) => x.timestamp)[0];
+      if (firstSale) {
+        return {
+          seller: firstSale.events.nft.seller,
+          mint: mint,
+          amount: firstSale.events.nft.amount
+        };
+      }
+    } catch (err) {
+      log.error(err);
+    }
+    return null;
+  }
+  const mintChunks = utility.chunkItems(mints, 50);
+
+  for (const chunk of mintChunks) {
+    const salesPromises = chunk.map(processMint);
+    const results = await Promise.all(salesPromises);
+    const filtered = results.filter((result): result is { seller: string; mint: string; amount: number } => result !== null);
+    sales = sales.concat(filtered);
+    progressBar.increment(filtered.length);
+  }
+
+  progressBar.stop();
+  return sales;
 }
 
 export async function searchCollections(request: CollectionSearchRequest) {
@@ -1044,6 +1081,7 @@ async function processCollection(collection: CollectionSearch, fetchAssets: Fetc
   if (filterOutFrozen && filterOutFrozen == true) {
     results = results.filter((x) => !x.ownership.frozen);
   }
+  const allMints = results.map((x) => x.id);
   const holders = utility.convertFromHeliusResultToHolderAccount(results);
   const filteredHolders = filterMarketplaces ? filterMarketPlacesByHolders(holders) : holders;
   const finalHolders = includeMintIds ? filteredHolders : filteredHolders.map((x) => { return { walletId: x.walletId, totalAmount: x.totalAmount, mintIds: [] } as HolderAccount });
@@ -1056,6 +1094,7 @@ async function processCollection(collection: CollectionSearch, fetchAssets: Fetc
     holders: finalHolders.length,
     holderMints: finalHolders,
     collectionName: collectionMint.collectionName,
+    mintIds: includeMintIds ? allMints : [],
   }
   return collectionResult;
 }

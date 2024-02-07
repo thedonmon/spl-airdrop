@@ -77,12 +77,13 @@ async function makePostRequestWithBackoff(url: string, body: any, numOfAttempts:
 
 export const parseTransactionForAddressByType = async (tokenAddress: string, apiKey: string, type: string = "NFT_MINT", env: string = "devnet") => {
     const baseUrl = env === "devnet" ? "https://api-devnet.helius.xyz" : "https://api.helius.xyz";
-    const url = `${baseUrl}/v0/addresses/${tokenAddress}/transactions?api-key=${apiKey}&type=${type}`;
+    const url = `${baseUrl}/v0/addresses/${tokenAddress}/transactions?api-key=${apiKey}${!!type ? `&type=${type}` : ''}`;
     try {
         const data = await makeGetRequestWithBackoff(url);
         return data as TransactionsArray;
     } catch (e) {
-        console.error('Error fetching transaction data:', e);
+        console.log("error", e);
+        console.error('Error fetching transaction data:', e, tokenAddress, type);
         throw e; // Rethrow the error to handle it in the calling code, if necessary
     }
 }
@@ -167,6 +168,21 @@ export const getAssetsByOwner = async (heliusUrl: string, owner: string, showFun
     
     return resultData;
 };
+
+export async function searchFungibleAssetsByOwner(heliusUrl: string, owner: string, id?: string) {
+    const requestParams: GetAssetsPaginatedOptions = {
+        heliusUrl: heliusUrl,
+        method: "searchAssets",
+        requestId: id,
+        params: {
+            ownerAddress: owner,
+            tokenType: "fungible",
+        },
+    };
+    const resultData = await getAssetsPaginated(requestParams);
+    
+    return resultData;
+}
 
 
 export async function getAssetsPaginated(options: GetAssetsPaginatedOptions) {

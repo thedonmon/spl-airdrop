@@ -113,7 +113,14 @@ export type DigitalAssetsResults = {
 	limit: number;
 	page: number;
 	items: HeliusDigitalAsset[];
+  nativeBalance?: NativeBalance; 
 };
+
+export type NativeBalance = {
+  lamports: number;
+  price_per_sol: number;
+  total_price: number;
+}
 
 export type HeliusDigitalAsset = {
 	interface: string;
