@@ -713,7 +713,7 @@ export function downloadMintImages(mintsPath: string): Promise<any> {
           const imageUrl = response.image;
           await downloadFile(
             imageUrl,
-            '/Users/davidmaman/SourceCode/spl-airdrop/src/images',
+            '/Users/don/SourceCode/spl-airdrop/src/images',
             imageName,
           );
           progressBar.increment();

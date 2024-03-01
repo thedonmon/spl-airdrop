@@ -39,6 +39,11 @@ import bs58 from 'bs58';
 import { TransferError } from './types/errorTransfer';
 import { CollectionSearch } from './types/collection';
 import { CollectionSearchRequest } from './types/cli';
+import { createUmi } from '@metaplex-foundation/umi-bundle-defaults';
+import { generateSigner, publicKey, transactionBuilder, keypairIdentity as umiKeypairIdentity, TransactionBuilder } from '@metaplex-foundation/umi';
+import { mplTokenMetadata, updateMetadataAccountV2, findMetadataPda } from '@metaplex-foundation/mpl-token-metadata';
+import { fromWeb3JsKeypair } from '@metaplex-foundation/umi-web3js-adapters';
+import { setComputeUnitPrice } from '@metaplex-foundation/mpl-toolbox';
 
 const LOG_PATH = './logs';
 const BASE_PATH = __dirname;
@@ -1161,6 +1166,36 @@ programCommand('format-holderlist-to-wallets', { requireWallet: false })
     const wallets = spltokenairdrop.formatFromHolderListToWalletList(holderlist);
     writeToFile('wallets', wallets, { format: fileFormat, includeTimestamp: true });
     log.info(`Wallets written to wallets.${fileFormat}`);
+    elapsed(start, true, undefined, true);
+  });
+
+  programCommand('update-mint', { requireWallet: true })
+  .argument('<mint>', 'mint')
+  .option('-na, --newAuth <string>', 'new update auth')
+  .option('-r, --rpc-url <string>', 'custom rpc url since this is a heavy command')
+  .action(async (mint: string, _, cmd) => {
+    console.log(
+      chalk.blue(figlet.textSync('format snapshhot', { horizontalLayout: 'controlled smushing' })),
+    );
+    const { rpcUrl, newAuth, keypair } = cmd.opts();
+    let start = now();
+    const mintPk = publicKey(mint);
+    const currentUpdateAuth = fromWeb3JsKeypair(loadWalletKey(keypair));
+    const umi = createUmi(rpcUrl)
+    .use(umiKeypairIdentity(currentUpdateAuth))
+    .use(mplTokenMetadata());
+    const mySigner = generateSigner(umi);
+    const metadata = findMetadataPda(umi, { mint: mintPk })
+    const ix = updateMetadataAccountV2(umi, {
+      metadata: metadata,
+      updateAuthority: mySigner,
+      newUpdateAuthority: publicKey(newAuth),
+    })
+    const computeIx = setComputeUnitPrice(umi, {
+      microLamports: 1
+    })
+    computeIx.add(ix);
+    const tx = await umi.rpc.sendTransaction(await computeIx.buildAndSign(umi));
     elapsed(start, true, undefined, true);
   });
 
